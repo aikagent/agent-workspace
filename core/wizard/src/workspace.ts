@@ -13,6 +13,8 @@ export interface Workspace {
   notes?: { kind: "none" | "vault"; path?: string; folders?: Record<string, string> };
   /** Usage-based model routing for project agents (omp). Absent = off: agents use the engineer's own omp setup. */
   routing?: Routing;
+  /** Wizard progress (see progress.ts); ./setup subcommands never change it. */
+  setup?: { done: string[]; finished: boolean };
 }
 
 /** short/week: percent used at which a provider is skipped; roles: omp model role → models in preference order. */
