@@ -311,6 +311,14 @@ export function routingOff(root: string, core: string): void {
   applyRouting(root, core, undefined);
 }
 
+/** Stops routing one model role; routing turns off when no role is left. */
+export function routingClear(root: string, core: string, role: string): void {
+  const current = loadWorkspace(root).routing;
+  if (!current?.roles[role]) return;
+  const { [role]: _cleared, ...roles } = current.roles;
+  applyRouting(root, core, Object.keys(roles).length ? { ...current, roles } : undefined);
+}
+
 const NOTE_KINDS: Record<string, string> = {
   decisions: "decisions",
   people: "people",

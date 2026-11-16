@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingLimits, routingOff, routingSet, saveContext, useVault, verify } from "../src/workspace";
+import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingClear, routingLimits, routingOff, routingSet, saveContext, useVault, verify } from "../src/workspace";
 
 const CORE = join(import.meta.dir, "..", "..");
 const git = (cwd: string, ...args: string[]) =>
@@ -327,6 +327,17 @@ describe("routing", () => {
     routingOff(root, CORE);
     expect(readFileSync(join(agentDir(), "agent.yml"), "utf8")).toBe(plain);
     expect(readYaml<Overlay>(join(agentDir(), "overlay.yml")).retry).toBeUndefined();
+    expect(loadWorkspace(root).routing).toBeUndefined();
+  });
+
+  test("clearing one role keeps the others; clearing the last one turns routing off", () => {
+    routingSet(root, CORE, "task", ["a/one"]);
+    routingSet(root, CORE, "smol", ["a/small"]);
+    routingClear(root, CORE, "task");
+    expect(loadWorkspace(root).routing?.roles).toEqual({ smol: ["a/small"] });
+    routingClear(root, CORE, "smol");
+    expect(loadWorkspace(root).routing).toBeUndefined();
+    routingClear(root, CORE, "smol");
     expect(loadWorkspace(root).routing).toBeUndefined();
   });
 

@@ -24,7 +24,7 @@ Progress is saved after each step: if you stop (Ctrl+C) or a step fails, the nex
 
 | Command | Does |
 |---|---|
-| `./setup` | Bootstrap, then guided setup in omp |
+| `./setup` | The setup wizard (resumes where it stopped; run it again to change one step) |
 | `./setup check` | Shows which tools are installed |
 | `./setup org add <git-url>` | Clones an org repo into `orgs/<id>/` |
 | `./setup project add <org>/<project>` | Sets up the project's repos in `projects/<org>/<name>/`: clones each one, or creates an empty folder for a repo without a url; existing folders are left as they are |

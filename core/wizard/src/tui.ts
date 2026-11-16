@@ -5,7 +5,7 @@
 import * as p from "@clack/prompts";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { addToOmp, scanServers, withReferences } from "./mcp";
+import { addToOmp, scanServers, toOmp } from "./mcp";
 import { CONTEXT_PROMPT, catalog, draft, hasOwnRouting, login, modelRoles, proposeRouting, smoke, usage, usageLines, type Runner } from "./omp";
 import { STEPS, loadProgress, markDone, nextStep, restart, type Step } from "./progress";
 import {
@@ -17,6 +17,7 @@ import {
   repoDir,
   roleAdd,
   routingLimits,
+  routingClear,
   routingOff,
   routingSet,
   saveContext,
@@ -115,19 +116,16 @@ async function tools(ctx: Ctx): Promise<void> {
   saveWorkspace(ctx.root, { ...ws, tools: { terminal: found.tern ? "tern" : "plain", secrets: found.pass ? "pass" : "env", ...ws.tools, agent } });
 }
 
+// No p.spinner() around blocking child processes: it never animates (the event loop is blocked) and its raw terminal
+// mode turns Ctrl+C and git/ssh password prompts into plain characters. A log line before the call keeps both working.
 async function signin(ctx: Ctx): Promise<void> {
-  const s = p.spinner();
-  s.start("Checking that omp can reach a model");
-  if (smoke(ctx.run, ctx.root)) return s.stop("omp answered");
-  s.stop("No working provider yet");
-  p.log.info("Sign in with omp (it shows its own provider list).");
+  p.log.step("Checking that omp can reach a model…");
+  if (smoke(ctx.run, ctx.root)) return p.log.success("omp answered");
+  p.log.warn("No working provider yet. Sign in with omp (it shows its own provider list).");
   login(ctx.run, ctx.root);
-  s.start("Checking again");
-  if (!smoke(ctx.run, ctx.root)) {
-    s.stop("omp still cannot reach a model");
-    throw new Error("Sign-in did not work; run `omp login`, then ./setup again");
-  }
-  s.stop("omp answered");
+  p.log.step("Checking again…");
+  if (!smoke(ctx.run, ctx.root)) throw new Error("Sign-in did not work; run `omp login`, then ./setup again");
+  p.log.success("omp answered");
 }
 
 async function org(ctx: Ctx): Promise<void> {
@@ -167,10 +165,9 @@ async function projects(ctx: Ctx): Promise<void> {
     );
     const said = { cloned: "cloned", present: "already there, left as is", created: "created empty (no url: put its files there)" };
     for (const id of picked) {
-      const s = p.spinner();
-      s.start(`Setting up ${o.id}/${id}`);
+      p.log.step(`Setting up ${o.id}/${id}…`);
       const { repos } = projectAdd(ctx.root, `${o.id}/${id}`);
-      s.stop(`${o.id}/${id}: ${repos.map((r) => `${r.name} ${said[r.status]}`).join(", ")}`);
+      p.log.success(`${o.id}/${id}: ${repos.map((r) => `${r.name} ${said[r.status]}`).join(", ")}`);
     }
   }
 }
@@ -208,21 +205,26 @@ async function context(ctx: Ctx): Promise<void> {
   for (const proj of loadWorkspace(ctx.root).projects) {
     const ref = `${proj.org}/${proj.id}`;
     if (done.includes(`context:${ref}`)) continue;
-    if (!answer(await p.confirm({ message: `Draft context for ${ref} with omp? (it reads the repo; nothing is saved without your yes)` }))) {
+    const file = join(ctx.root, "orgs", proj.org, "projects", proj.id, "context.md");
+    const current = existsSync(file) ? readFileSync(file, "utf8").trim() : "";
+    const lines = current ? current.split("\n").length : 0;
+    // Org context is curated and reviewed in the org repo: keep it unless the engineer asks to replace it.
+    if (current) p.note(current.split("\n").slice(0, 8).join("\n") + (lines > 8 ? `\n… (${lines} lines)` : ""), `Current context.md for ${ref}`);
+    const ask = current ? `Draft a new context for ${ref} with omp?` : `Draft context for ${ref} with omp?`;
+    if (!answer(await p.confirm({ message: `${ask} (it reads the repo; nothing is saved without your yes)`, initialValue: !current }))) {
       markDone(ctx.root, `context:${ref}`);
       continue;
     }
-    const s = p.spinner();
-    s.start(`omp is reading ${proj.name}`);
+    p.log.step(`omp is reading ${proj.name} (up to 2 minutes)…`);
     const text = draft(ctx.run, ctx.core, repoDir(ctx.root, ref), CONTEXT_PROMPT);
     if (!text) {
-      s.stop(`No draft for ${ref} (omp failed or timed out); try again later from this step`);
+      p.log.warn(`No draft for ${ref} (omp failed or timed out); try again later from this step`);
       continue;
     }
-    s.stop("Draft ready");
-    p.note(text, `context.md for ${ref}`);
-    if (answer(await p.confirm({ message: "Save it?", initialValue: true }))) {
-      const file = saveContext(ctx.root, ctx.core, ref, text);
+    p.note(text, `Draft context.md for ${ref}`);
+    const save = current ? `Replace the current context.md (${lines} lines) with this draft?` : "Save it?";
+    if (answer(await p.confirm({ message: save, initialValue: !current }))) {
+      saveContext(ctx.root, ctx.core, ref, text);
       p.log.success(`Saved ${file}; agents refreshed. Commit it to the org repo through its review.`);
     }
     markDone(ctx.root, `context:${ref}`);
@@ -258,16 +260,18 @@ async function mcp(ctx: Ctx): Promise<void> {
   for (const name of picked) {
     const f = candidates.find((c) => c.name === name);
     if (!f) continue;
-    const entry = withReferences(name, f.entry, secrets, prefix);
-    p.note(JSON.stringify(entry, null, 2), `${name} for ${ompFile.replace(ctx.home, "~")}`);
-    if (!answer(await p.confirm({ message: `Add ${name} to omp?` }))) continue;
-    addToOmp(ompFile, name, entry);
-    for (const fieldName of ["env", "headers"]) {
-      for (const k of Object.keys((f.entry[fieldName] as object | undefined) ?? {})) toStore.push(secrets === "pass" ? `pass insert ${prefix}/${name}/${k}` : `export ${k}=…`);
+    const imported = toOmp(name, f.entry, secrets, prefix);
+    if ("skip" in imported) {
+      p.log.warn(`${name}: skipped, it ${imported.skip}`);
+      continue;
     }
+    p.note(JSON.stringify(imported.entry, null, 2), `${name} for ${ompFile.replace(ctx.home, "~")}`);
+    if (!answer(await p.confirm({ message: `Add ${name} to omp?` }))) continue;
+    addToOmp(ompFile, name, imported.entry);
+    toStore.push(...imported.store);
     p.log.success(`Added ${name}`);
   }
-  if (toStore.length) p.note(toStore.join("\n"), secrets === "pass" ? "Store these secrets" : "Set these environment variables");
+  if (toStore.length) p.note(toStore.join("\n"), secrets === "pass" ? "Store these secrets with pass" : "Set these environment variables (e.g. in your shell profile)");
 }
 
 async function routing(ctx: Ctx): Promise<void> {
@@ -312,6 +316,7 @@ async function routing(ctx: Ctx): Promise<void> {
       .map((m) => m.trim())
       .filter(Boolean);
     if (models.length) routingSet(ctx.root, ctx.core, role, models);
+    else routingClear(ctx.root, ctx.core, role);
   }
   if (!loadWorkspace(ctx.root).routing) return;
   const r = loadWorkspace(ctx.root).routing;
@@ -369,18 +374,22 @@ async function verifyScreen(ctx: Ctx): Promise<void> {
 async function finish(ctx: Ctx): Promise<void> {
   const ws = loadWorkspace(ctx.root);
   const agents = ws.projects.flatMap((x) => x.roles.map((r) => `${x.org}/${x.id}/${r}`));
+  const launch = (a: string) => String(field(field(yaml(join(ctx.root, "agents", a, "agent.yml")), "launch"), "omp") ?? "");
   p.note(
     [
       `Organisations: ${ws.orgs.map((o) => o.id).join(", ") || "none"}`,
       `Projects: ${ws.projects.map((x) => `${x.org}/${x.id}`).join(", ") || "none"}`,
-      `Agents: ${agents.join(", ") || "none"}`,
       `Routing: ${ws.routing ? Object.keys(ws.routing.roles).join(", ") : "off"}`,
       `Vault: ${ws.notes?.kind === "vault" ? ws.notes.path : "none"}`,
-      "",
-      "Start a project agent with the launch command in agents/<org>/<project>/<role>/agent.yml.",
     ].join("\n"),
     "Your workspace",
   );
+  if (agents.length) {
+    p.note(
+      agents.map((a) => (usesOmp(ctx) ? `${a}\n  ${launch(a)}` : `${a}: open your agent in its cwd with role.md (agents/${a}/)`)).join("\n"),
+      "Start a project agent",
+    );
+  }
 }
 
 const SCREENS: Record<Step, (ctx: Ctx) => Promise<void>> = {
