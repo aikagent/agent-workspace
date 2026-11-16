@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { draft, proposeRouting, type Runner } from "../src/omp";
+import { catalog, draft, modelRoles, proposeRouting, usageLines, type Runner } from "../src/omp";
 
 const CORE = "/tool/core";
 const calls: { cmd: string; args: string[]; cwd: string }[] = [];
@@ -31,5 +31,36 @@ describe("proposeRouting", () => {
     const current = { task: "a/mid" };
     const catalog = { a: ["a/mid", "a/big"], b: ["b/mid"], c: ["c/mid"] };
     expect(proposeRouting([report("a"), report("b")], current, ["task"], catalog)).toEqual({ task: ["a/mid", "b/mid"] });
+  });
+});
+
+describe("reading omp's model setup", () => {
+  test("current model roles come from omp config list", () => {
+    const out = '  modelRoles = {"default":"a/big","task":"a/mid:high"} (record)\n  retry.enabled = true (boolean)\n';
+    expect(modelRoles(runner(out), "/r")).toEqual({ default: "a/big", task: "a/mid:high" });
+    expect(modelRoles(runner("  retry.enabled = true (boolean)\n"), "/r")).toEqual({});
+  });
+
+  test("the chat model catalog is grouped by provider", () => {
+    const out = JSON.stringify({
+      models: [
+        { provider: "a", kind: "chat", selector: "a/mid" },
+        { provider: "a", kind: "image", selector: "a/pic" },
+        { provider: "b", kind: "chat", selector: "b/mid" },
+      ],
+    });
+    expect(catalog(runner(out), "/r")).toEqual({ a: ["a/mid"], b: ["b/mid"] });
+    expect(catalog(runner("", 1), "/r")).toEqual({});
+  });
+});
+
+describe("usageLines", () => {
+  test("one entry per provider account, tier-only meters labelled, percent rounded", () => {
+    const meter = (label: string, used: number, scope?: { tier?: string; shared?: boolean }) => ({ id: label, amount: { usedFraction: used }, window: { label }, scope });
+    const reports = [
+      { provider: "a", limits: [meter("5h", 0.123), meter("7d", 0.04, { tier: "big" }), meter("plan", 0.5, { tier: "pro", shared: true })] },
+      { provider: "a", limits: [meter("5h", 0.9)] },
+    ];
+    expect(usageLines(reports)).toEqual({ a: ["5h: 12%", "7d (big only): 4%", "plan: 50%"], "a (account 2)": ["5h: 90%"] });
   });
 });

@@ -259,7 +259,7 @@ describe("verify", () => {
   test("an empty workspace says that nothing is set up yet", () => {
     const check = verify(root).find((c) => c.check === "at least one project set up");
     expect(check?.ok).toBe(false);
-    expect(check?.detail).toContain("/workspace-setup");
+    expect(check?.detail).toBe("nothing configured yet; run ./setup");
     orgAdd(root, orgRepo("acme"), CORE);
     expect(verify(root).find((c) => c.check === "at least one project set up")?.detail).toContain("./setup project add acme/<project>");
   });

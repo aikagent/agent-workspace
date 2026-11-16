@@ -37,7 +37,8 @@ describe("withReferences", () => {
       headers: { Authorization: "!pass show mcp/tracker/Authorization" },
       env: { TOKEN: "!pass show mcp/tracker/TOKEN" },
     });
-    expect(withReferences("tracker", { env: { TOKEN: "x" } }, "env", "mcp")).toEqual({ env: { TOKEN: "${TOKEN}" } });
+    // omp reads a value that names an environment variable from that variable.
+    expect(withReferences("tracker", { env: { TOKEN: "x" } }, "env", "mcp")).toEqual({ env: { TOKEN: "TOKEN" } });
   });
 
   test("an entry without env or headers is copied as is", () => {

@@ -37,9 +37,9 @@ export function scanServers(home: string): Found[] {
   });
 }
 
-/** The entry with every env and header value replaced by a secret reference, so no value is copied. */
+/** The entry with every env and header value replaced by a reference (pass command, or the variable's name, which omp reads from the environment). */
 export function withReferences(name: string, entry: Record<string, unknown>, secrets: "pass" | "env", prefix: string): Record<string, unknown> {
-  const ref = (k: string) => (secrets === "pass" ? `!pass show ${prefix}/${name}/${k}` : `\${${k}}`);
+  const ref = (k: string) => (secrets === "pass" ? `!pass show ${prefix}/${name}/${k}` : k);
   const out: Record<string, unknown> = { ...entry };
   for (const field of ["env", "headers"]) {
     const values = entry[field];

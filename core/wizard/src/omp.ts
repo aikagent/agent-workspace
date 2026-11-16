@@ -32,11 +32,52 @@ export function usage(run: Runner, cwd: string): UsageReport[] | undefined {
   }
 }
 
+type ShownLimit = { id: string; window?: { label?: string }; scope?: { tier?: string; shared?: boolean }; amount: { usedFraction?: number } };
+
+/** Percent used per provider account and window, for display; meters scoped to one model tier say so. */
+export function usageLines(reports: { provider: string; limits: ShownLimit[] }[]): Record<string, string[]> {
+  const line = (l: ShownLimit) =>
+    `${l.window?.label ?? l.id}${l.scope?.tier && !l.scope.shared ? ` (${l.scope.tier} only)` : ""}: ${Math.round((l.amount.usedFraction ?? 0) * 100)}%`;
+  const count: Record<string, number> = {};
+  return Object.fromEntries(
+    reports.map((rep) => {
+      count[rep.provider] = (count[rep.provider] ?? 0) + 1;
+      const key = count[rep.provider] > 1 ? `${rep.provider} (account ${count[rep.provider]})` : rep.provider;
+      return [key, rep.limits.filter((l) => typeof l.amount.usedFraction === "number").map(line)];
+    }),
+  );
+}
+
 /** True when the engineer's omp already routes models: global fallback chains, or a router extension. */
 export function hasOwnRouting(run: Runner, cwd: string, agentDir: string): boolean {
   const chains = run("omp", ["config", "list"], { cwd }).stdout.match(/retry\.fallbackChains = (\{.*\})/)?.[1];
   const ext = join(agentDir, "extensions");
   return (chains !== undefined && chains !== "{}") || (existsSync(ext) && readdirSync(ext).some((d) => d.includes("router")));
+}
+
+/** The engineer's current model per role (e.g. default, task, slow, smol), from `omp config list`. */
+export function modelRoles(run: Runner, cwd: string): Record<string, string> {
+  const json = run("omp", ["config", "list"], { cwd }).stdout.match(/^\s*modelRoles = (\{.*\})/m)?.[1];
+  try {
+    return json ? JSON.parse(json) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Chat models omp can use, as provider → selectors, from `omp models --json`. */
+export function catalog(run: Runner, cwd: string): Record<string, string[]> {
+  const r = run("omp", ["models", "--json"], { cwd, timeoutMs: 30_000 });
+  if (r.status !== 0) return {};
+  try {
+    const out: Record<string, string[]> = {};
+    for (const m of JSON.parse(r.stdout).models as { provider: string; kind: string; selector: string }[]) {
+      if (m.kind === "chat") (out[m.provider] ??= []).push(m.selector);
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 export const CONTEXT_PROMPT = [
