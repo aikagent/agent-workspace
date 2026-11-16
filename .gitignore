@@ -3,3 +3,4 @@
 /agents/
 /workspace.yml
 .DS_Store
+node_modules/

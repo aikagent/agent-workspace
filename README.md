@@ -12,17 +12,23 @@ cd agent-workspace
 ./setup
 ```
 
-`./setup` needs [bun](https://bun.sh) and git. It then:
-1. checks your tools,
-2. asks for your AI provider and agent (omp by default; any other agent gets a generic setup),
-3. installs omp if missing (after a yes), signs you in, runs a one-line smoke test,
-4. hands over to omp with `/workspace-setup`, which guides you through orgs, projects, roles, MCP servers, model routing and your notes vault. Workspace changes go through `./setup` commands after your yes; MCP entries for your agent's own config are shown and written only after your yes.
+`./setup` needs [bun](https://bun.sh) and git. It is a terminal wizard; you answer its questions and never have to chat with an agent during setup:
+1. checks your tools and which agent you use (omp by default), installs omp if missing (after a yes),
+2. signs you in through `omp login` and runs a one-line smoke test,
+3. walks you through your org, projects, project agents, project context (omp drafts it from each repo, headless and read-only; you approve before anything is saved), MCP servers from your other agents, model routing and your notes vault,
+4. verifies everything and offers to start the **Main session**: `omp` in this folder.
+
+Progress is saved after each step: if you stop (Ctrl+C) or a step fails, the next `./setup` offers to resume where you left off. Run it again later to change one step. Every write outside this folder (your omp MCP config) happens only after your yes.
+
+### Secrets
+
+Secrets go to [pass](https://www.passwordstore.org/). When the wizard adds an MCP server from another agent, every token or key becomes a `!pass show work/<org>/mcp/<server>/<key>` reference in omp's config, and the wizard runs `pass insert` so you type the value straight into pass; it never sees or copies it. `./setup verify` checks that every referenced entry exists. Without pass (or before `pass init <gpg-id>`), the wizard warns on every run and uses environment variable names instead. Provider sign-in stays with `omp login`, which keeps its own credentials.
 
 ## Commands
 
 | Command | Does |
 |---|---|
-| `./setup` | Bootstrap, then guided setup in omp |
+| `./setup` | The setup wizard (resumes where it stopped; run it again to change one step) |
 | `./setup check` | Shows which tools are installed |
 | `./setup org add <git-url>` | Clones an org repo into `orgs/<id>/` |
 | `./setup project add <org>/<project>` | Sets up the project's repos in `projects/<org>/<name>/`: clones each one, or creates an empty folder for a repo without a url; existing folders are left as they are |
@@ -38,7 +44,7 @@ setup                   entry point
 AGENTS.md               workflow rules every agent here follows
 core/
   workflow/roles/       core roles: dev, support, reviewer, ops
-  commands/workspace-setup.md   the guided /workspace-setup (linked from .omp/commands/)
+  wizard/src/tui.ts     the ./setup wizard screens
   adapters/agent/       how generated agents run on omp, or on any other agent
   templates/org/        start your org repo from this
   templates/notes/      default notes vault structure
@@ -72,7 +78,7 @@ Copy `core/templates/org/` into a new private repo, fill in `org.yml`, add one f
 
 ## Status
 
-Early. Works today: bootstrap with omp, org/project/role/vault commands, role resolution with tighten-only checks. Planned: Tern split panes and delegation between a main session and project agents, more agent adapters.
+Early. Works today: the setup wizard with resume, org/project/role/vault/routing commands, role resolution with tighten-only checks, usage-based routing. Planned: Tern split panes and delegation between the Main session and project agents, more agent adapters.
 
 ## Develop
 

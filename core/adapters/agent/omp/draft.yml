@@ -1,0 +1,8 @@
+# Settings overlay for the wizard's drafting call: read-only, no shell, no memory or skill writes.
+# Explicit denies also beat a user-level allow for these tools (the overlay outranks the global config).
+tools:
+  approval: { edit: deny, write: deny, ast_edit: deny, bash: deny, eval: deny, browser: deny, task: deny, learn: deny, manage_skill: deny }
+  xdev: false
+memory: { backend: "off" }
+autolearn: { enabled: false }
+mcp: { enableProjectConfig: false }

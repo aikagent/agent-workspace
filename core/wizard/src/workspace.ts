@@ -13,6 +13,8 @@ export interface Workspace {
   notes?: { kind: "none" | "vault"; path?: string; folders?: Record<string, string> };
   /** Usage-based model routing for project agents (omp). Absent = off: agents use the engineer's own omp setup. */
   routing?: Routing;
+  /** Wizard progress (see progress.ts); ./setup subcommands never change it. */
+  setup?: { done: string[]; finished: boolean };
 }
 
 /** short/week: percent used at which a provider is skipped; roles: omp model role → models in preference order. */
@@ -124,6 +126,12 @@ function readProject(root: string, org: string, project: string): ProjectFile {
 const projectDir = (root: string, org: string, p: ProjectFile) => join(root, "projects", org, p.name);
 const defaultRepoDir = (root: string, org: string, p: ProjectFile) =>
   join(projectDir(root, org, p), (p.repos.find((r) => r.default) ?? p.repos[0]).name);
+
+/** The folder a project's agents run in (its default repo). */
+export function repoDir(root: string, ref: string): string {
+  const { org, project } = parseRef(ref);
+  return defaultRepoDir(root, org, readProject(root, org, project));
+}
 
 /** Sets up every repo of an org project in projects/<org>/<name>/<repo> (clone, or an empty folder when it has no url) and records it. */
 export function projectAdd(root: string, ref: string): { dir: string; repos: { name: string; status: "cloned" | "present" | "created" }[] } {
@@ -249,6 +257,17 @@ export function roleAdd(root: string, core: string, ref: string, roleId: string)
   return role;
 }
 
+/** Writes an org project's context.md in the local org checkout and regenerates that project's agents. */
+export function saveContext(root: string, core: string, ref: string, text: string): string {
+  const { org, project } = parseRef(ref);
+  readProject(root, org, project);
+  const file = join(root, "orgs", org, "projects", project, "context.md");
+  writeFileSync(file, `${text.trim()}\n`);
+  const entry = loadWorkspace(root).projects.find((p) => p.org === org && p.id === project);
+  for (const r of entry?.roles ?? []) roleAdd(root, core, ref, r);
+  return file;
+}
+
 const DEFAULT_LIMITS = { short: 95, week: 80 };
 const MODEL = /^[A-Za-z0-9][\w.-]*\/\S+$/;
 
@@ -290,6 +309,14 @@ export function routingLimits(root: string, core: string, short: number, week: n
 /** Turns routing off: agents go back to the engineer's own omp setup. */
 export function routingOff(root: string, core: string): void {
   applyRouting(root, core, undefined);
+}
+
+/** Stops routing one model role; routing turns off when no role is left. */
+export function routingClear(root: string, core: string, role: string): void {
+  const current = loadWorkspace(root).routing;
+  if (!current?.roles[role]) return;
+  const { [role]: _cleared, ...roles } = current.roles;
+  applyRouting(root, core, Object.keys(roles).length ? { ...current, roles } : undefined);
 }
 
 const NOTE_KINDS: Record<string, string> = {
@@ -392,7 +419,7 @@ export function verify(root: string): Check[] {
   if (ws.projects.length === 0) {
     const detail = ws.orgs.length
       ? `no project yet; run ./setup project add ${ws.orgs[0].id}/<project>`
-      : "nothing configured yet; run /workspace-setup in omp, or ./setup org add <git-url>";
+      : "nothing configured yet; run ./setup";
     checks.push({ check: "at least one project set up", ok: false, detail });
   }
   for (const o of ws.orgs) {

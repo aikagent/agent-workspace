@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingLimits, routingOff, routingSet, useVault, verify } from "../src/workspace";
+import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingClear, routingLimits, routingOff, routingSet, saveContext, useVault, verify } from "../src/workspace";
 
 const CORE = join(import.meta.dir, "..", "..");
 const git = (cwd: string, ...args: string[]) =>
@@ -259,7 +259,7 @@ describe("verify", () => {
   test("an empty workspace says that nothing is set up yet", () => {
     const check = verify(root).find((c) => c.check === "at least one project set up");
     expect(check?.ok).toBe(false);
-    expect(check?.detail).toContain("/workspace-setup");
+    expect(check?.detail).toBe("nothing configured yet; run ./setup");
     orgAdd(root, orgRepo("acme"), CORE);
     expect(verify(root).find((c) => c.check === "at least one project set up")?.detail).toContain("./setup project add acme/<project>");
   });
@@ -277,6 +277,18 @@ describe("verify", () => {
     rmSync(join(root, "gone.md"));
     orgAdd(root, orgRepo("acme", { "denywords.txt": "initech\n" }), CORE);
     expect(verify(root).find((c) => c.check === "no org acme words in the tool repo")?.ok).toBe(true);
+  });
+});
+
+describe("saveContext", () => {
+  test("writes the org project's context.md and refreshes that project's agents", () => {
+    orgAdd(root, orgRepo("acme"), CORE);
+    projectAdd(root, "acme/example");
+    roleAdd(root, CORE, "acme/example", "dev");
+    const file = saveContext(root, CORE, "acme/example", "# Example\nBuild with make.");
+    expect(file).toBe(join(root, "orgs", "acme", "projects", "example", "context.md"));
+    expect(readFileSync(file, "utf8")).toBe("# Example\nBuild with make.\n");
+    expect(readFileSync(join(root, "agents", "acme", "example", "dev", "role.md"), "utf8")).toContain("Build with make.");
   });
 });
 
@@ -315,6 +327,17 @@ describe("routing", () => {
     routingOff(root, CORE);
     expect(readFileSync(join(agentDir(), "agent.yml"), "utf8")).toBe(plain);
     expect(readYaml<Overlay>(join(agentDir(), "overlay.yml")).retry).toBeUndefined();
+    expect(loadWorkspace(root).routing).toBeUndefined();
+  });
+
+  test("clearing one role keeps the others; clearing the last one turns routing off", () => {
+    routingSet(root, CORE, "task", ["a/one"]);
+    routingSet(root, CORE, "smol", ["a/small"]);
+    routingClear(root, CORE, "task");
+    expect(loadWorkspace(root).routing?.roles).toEqual({ smol: ["a/small"] });
+    routingClear(root, CORE, "smol");
+    expect(loadWorkspace(root).routing).toBeUndefined();
+    routingClear(root, CORE, "smol");
     expect(loadWorkspace(root).routing).toBeUndefined();
   });
 

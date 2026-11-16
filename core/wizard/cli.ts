@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * agent-workspace setup.
- *   ./setup                          bootstrap: AI provider, agent, smoke test, then hand over to the agent (/workspace-setup)
+ *   ./setup                          the setup wizard: tools, sign-in, org, projects, agents, context, MCP, routing, vault, verify;
+ *                                    resumes where it stopped and ends by offering the Main session (omp in this folder)
  *   ./setup check                    show which tools are installed
  *   ./setup org add <git-url>        clone an org repo into orgs/<id>
  *   ./setup project add <org>/<p>    set up an org project's repos in projects/<org>/<name>/ (clone, or empty folder without a url)
@@ -13,24 +14,13 @@
  *   ./setup routing off              agents go back to your own omp setup
  *   ./setup verify                   check the workspace on disk
  */
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  findVaults,
-  loadWorkspace,
-  newVault,
-  orgAdd,
-  projectAdd,
-  roleAdd,
-  routingLimits,
-  routingOff,
-  routingSet,
-  saveWorkspace,
-  useVault,
-  verify,
-} from "./src/workspace";
+import { spawnRunner, usage, usageLines } from "./src/omp";
+import { passChecks } from "./src/pass";
+import { runWizard } from "./src/tui";
+import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingLimits, routingOff, routingSet, useVault, verify } from "./src/workspace";
 
 const CORE = join(import.meta.dir, "..");
 /** AGENT_WORKSPACE_ROOT points the commands at another workspace (used by tests and smoke runs). */
@@ -40,85 +30,23 @@ if (process.env.AGENT_WORKSPACE_ROOT) console.error(`workspace: ${ROOT} (from AG
 const CALLER_CWD = process.env.AGENT_WORKSPACE_CALLER_CWD ?? process.cwd();
 const TOOLS = ["git", "omp", "tern", "pass"];
 
-function run(cmd: string, args: string[], opts: { inherit?: boolean } = {}): boolean {
-  // Pass env explicitly: in Bun, changes to process.env do not reach child processes otherwise.
-  const r = spawnSync(cmd, args, { cwd: ROOT, env: process.env, stdio: opts.inherit ? "inherit" : "pipe", encoding: "utf8" });
-  if (r.error) console.error(`${cmd}: ${r.error.message}`);
-  else if (r.status !== 0 && !opts.inherit && r.stderr) console.error(r.stderr.trim().split("\n").slice(-5).join("\n"));
-  return r.status === 0;
-}
-
-function check(): Record<string, boolean> {
-  const found = Object.fromEntries(TOOLS.map((t) => [t, Bun.which(t) !== null]));
-  for (const [tool, ok] of Object.entries(found)) console.log(`${ok ? "✓" : "·"} ${tool}${ok ? "" : " (not found)"}`);
-  return found;
-}
-
-function ask(question: string, fallback: string): string {
-  return (prompt(`${question} [${fallback}]`) ?? "").trim() || fallback;
-}
-
-function bootstrap(): void {
-  console.log("agent-workspace setup\n\n1. Tools on this machine");
-  const found = check();
-  if (!found.git) throw new Error("git is required");
-
-  console.log("\n2. AI provider");
-  const provider = ask("Which provider do you sign in with? (e.g. anthropic, openai-codex; empty = pick from the list)", "");
-
-  console.log("\n3. Agent");
-  const agent = ask("Agent to use (omp is the default; anything else gets the generic setup)", "omp");
-  if (agent !== "omp") {
-    const ws = loadWorkspace(ROOT);
-    ws.tools = { ...ws.tools, agent };
-    saveWorkspace(ROOT, ws);
-    console.log(
-      `\nGeneric setup for "${agent}": run these, then open your agent in a project folder.\n` +
-        "  ./setup org add <git-url>\n  ./setup project add <org>/<project>\n  ./setup role add <org>/<project> <role>\n  ./setup vault find\n  ./setup verify",
-    );
-    return;
-  }
-  if (!found.omp) {
-    if (!confirm("omp is not installed. Install it with: curl -fsSL https://omp.sh/install | sh ?")) throw new Error("omp is required for the guided setup");
-    if (!run("sh", ["-c", "curl -fsSL https://omp.sh/install | sh"], { inherit: true })) throw new Error("omp install failed");
-    // The installer puts omp in $PI_INSTALL_DIR or ~/.local/bin and only prints a PATH hint; make it visible to this run.
-    process.env.PATH = `${process.env.PI_INSTALL_DIR ?? join(homedir(), ".local", "bin")}:${process.env.PATH}`;
-    if (!Bun.which("omp", { PATH: process.env.PATH })) {
-      throw new Error("omp was installed but is not on PATH; add its folder (default ~/.local/bin) to PATH and run ./setup again");
-    }
-  }
-
-  console.log("\n4. Sign-in and smoke test");
-  const smoke = () => run("omp", ["-p", "--no-session", "Reply with exactly: OK"]);
-  if (!smoke()) {
-    console.log("No working provider yet; starting omp login.");
-    run("omp", provider ? ["login", provider] : ["login"], { inherit: true });
-    if (!smoke()) throw new Error("omp still cannot reach a model; run `omp login` and try again");
-  }
-  console.log("✓ omp answered");
-
-  const ws = loadWorkspace(ROOT);
-  ws.tools = { terminal: found.tern ? "tern" : "plain", secrets: found.pass ? "pass" : "env", ...ws.tools, agent: "omp" };
-  saveWorkspace(ROOT, ws);
-
-  console.log("\n5. Hand-over: omp will now guide the rest (orgs, projects, roles, MCP, model routing, vault).");
-  if (confirm("Start omp with /workspace-setup now?")) run("omp", ["/workspace-setup"], { inherit: true });
-  else console.log("Later, run `omp` in this folder and type /workspace-setup.");
+function check(): void {
+  for (const t of TOOLS) console.log(`${Bun.which(t) ? "✓" : "·"} ${t}${Bun.which(t) ? "" : " (not found)"}`);
 }
 
 function print(value: unknown): void {
   console.log(typeof value === "string" ? value : Bun.YAML.stringify(value, null, 2));
 }
 
-function main(args: string[]): void {
+async function main(args: string[]): Promise<void> {
   const [cmd, sub, a, b] = args;
   switch (`${cmd ?? ""} ${["org", "project", "role", "vault", "routing"].includes(cmd ?? "") ? sub ?? "" : ""}`.trim()) {
     case "":
-      return bootstrap();
+      return runWizard({ root: ROOT, core: CORE, callerCwd: CALLER_CWD, home: homedir(), run: spawnRunner });
     case "check":
       return void check();
     case "routing show":
-      return print({ routing: loadWorkspace(ROOT).routing ?? "off", usage: usage() });
+      return print({ routing: loadWorkspace(ROOT).routing ?? "off", usage: usageLines(usage(spawnRunner, ROOT) ?? []) });
     case "routing set":
       return print(routingSet(ROOT, CORE, need(a, "model role"), args.slice(3)));
     case "routing limits":
@@ -143,7 +71,7 @@ function main(args: string[]): void {
     case "vault new":
       return print(newVault(ROOT, need(a, "path"), CORE, CALLER_CWD));
     case "verify": {
-      const checks = verify(ROOT);
+      const checks = [...verify(ROOT), ...passChecks(homedir(), process.env)];
       for (const c of checks) console.log(`${c.ok ? "✓" : "✗"} ${c.check}${c.detail && !c.ok ? ` — ${c.detail}` : ""}`);
       if (checks.some((c) => !c.ok)) process.exitCode = 1;
       return;
@@ -154,31 +82,13 @@ function main(args: string[]): void {
   }
 }
 
-/** Percent used per provider account and window, from `omp usage --json` (only providers that report usage). */
-function usage(): Record<string, string[]> {
-  const r = spawnSync("omp", ["usage", "--json"], { cwd: ROOT, env: process.env, encoding: "utf8" });
-  if (r.status !== 0) return {};
-  type Limit = { id: string; window?: { label?: string }; scope?: { tier?: string; shared?: boolean }; amount?: { usedFraction?: number } };
-  const reports: { provider: string; limits: Limit[] }[] = JSON.parse(r.stdout).reports ?? [];
-  const line = (l: Limit) =>
-    `${l.window?.label ?? l.id}${l.scope?.tier && !l.scope.shared ? ` (${l.scope.tier} only)` : ""}: ${Math.round((l.amount?.usedFraction ?? 0) * 100)}%`;
-  const count: Record<string, number> = {};
-  return Object.fromEntries(
-    reports.map((rep) => {
-      count[rep.provider] = (count[rep.provider] ?? 0) + 1;
-      const key = count[rep.provider] > 1 ? `${rep.provider} (account ${count[rep.provider]})` : rep.provider;
-      return [key, rep.limits.filter((l) => typeof l.amount?.usedFraction === "number").map(line)];
-    }),
-  );
-}
-
 function need(value: string | undefined, name: string): string {
   if (!value) throw new Error(`missing <${name}>; see ./setup help`);
   return value;
 }
 
 try {
-  main(process.argv.slice(2));
+  await main(process.argv.slice(2));
 } catch (e) {
   console.error(`error: ${(e as Error).message}`);
   process.exitCode = 1;
