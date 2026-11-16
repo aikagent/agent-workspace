@@ -8,4 +8,5 @@ if ! command -v bun >/dev/null 2>&1; then
   echo "agent-workspace needs bun. Install it from https://bun.sh, then run ./setup again." >&2
   exit 1
 fi
+[ -d node_modules ] || bun install --frozen-lockfile --silent
 exec bun core/wizard/cli.ts "$@"
