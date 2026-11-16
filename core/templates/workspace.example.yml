@@ -1,6 +1,6 @@
 # Personal choices. ./setup writes workspace.yml (gitignored); this file documents the format.
 tools: { agent: omp, terminal: tern, secrets: pass }
-models: {}                 # optional tier → model, e.g. { default: "anthropic/claude-sonnet-4-5", task: "...", review: "..." }
+models: {}                 # optional tier → model; unset tiers use the agent's model roles (omp: @default, @task, @slow)
 orgs: []                   # - { id: example, url: "git@github.com:example-org/agent-org.git" }
 projects: []               # - { org: example, id: example, name: example-project, roles: [dev, support] }
 notes: { kind: none }      # or { kind: vault, path: "~/Notes", folders: { decisions: Decisions, ... } }

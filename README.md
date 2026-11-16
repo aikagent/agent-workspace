@@ -25,8 +25,8 @@ cd agent-workspace
 | `./setup` | Bootstrap, then guided setup in omp |
 | `./setup check` | Shows which tools are installed |
 | `./setup org add <git-url>` | Clones an org repo into `orgs/<id>/` |
-| `./setup project add <org>/<project>` | Clones the project's repos into `projects/<org>/<name>/` |
-| `./setup role add <org>/<project> <role>` | Resolves the role (core → org → project) and writes the agent to `agents/<org>/<project>/<role>/`: `role.md` (context, rules, instructions), `overlay.yml` (tool approvals for omp), `agent.yml` (with the launch command) |
+| `./setup project add <org>/<project>` | Sets up the project's repos in `projects/<org>/<name>/`: clones each one, or creates an empty folder for a repo without a url; existing folders are left as they are |
+| `./setup role add <org>/<project> <role>` | Resolves the role (core → org → project) and writes the agent to `agents/<org>/<project>/<role>/`: `role.md` (context, rules, instructions), `overlay.yml` (tool approvals and MCP isolation for omp), `agent.yml` (with the launch command and model) |
 | `./setup vault find` / `use <path>` / `new <path>` | Uses an existing notes vault, or creates one with the default structure |
 | `./setup verify` | Checks everything on disk |
 
@@ -44,7 +44,7 @@ core/
   templates/workspace.example.yml
   wizard/               the setup CLI and its tests
 orgs/       (gitignored) your org repos
-projects/   (gitignored) your cloned projects
+projects/   (gitignored) your project folders
 agents/     (gitignored) generated project agents
 workspace.yml (gitignored) your choices
 ```
@@ -53,7 +53,9 @@ workspace.yml (gitignored) your choices
 
 A role is defined in **core**, can be specialised by your **org** (`orgs/<org>/roles/`) and again by a **project** (`orgs/<org>/projects/<project>/roles/`). Each level points to its parent with `extends:`, and a project role cannot skip an org role of the same id. Lower levels can only tighten: add denied or prompted tools, read-only paths and must-not rules, turn writes off, or narrow MCP servers and skills. A role that tries to loosen its parent is refused.
 
-On omp, denied and prompted tools are enforced by the generated `overlay.yml` (a read-only role also denies edit, write and ast_edit). Must-not rules, read-only paths and MCP lists are written into `role.md` as instructions. On other agents, everything is instructions.
+On omp, denied and prompted tools are enforced by the generated `overlay.yml` (a read-only role also denies edit, write and ast_edit). The overlay also stops the agent from loading the repo's own MCP config (`.mcp.json` and the like), which the org's MCP lists do not cover; agents get only your user-level MCP servers. Must-not rules, read-only paths and MCP lists are written into `role.md` as instructions. On other agents, everything is instructions.
+
+Each role has a model tier (`default`, `task`, `review`). On omp it maps to your model roles `@default`, `@task` and `@slow`; set `models:` in `workspace.yml` to pick other models per tier.
 
 ## Set up your org repo
 

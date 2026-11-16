@@ -2,5 +2,6 @@ id: example                # lowercase letters, digits, dashes; used in <org>/<p
 name: example-project      # folder name under projects/<org>/
 repos:                     # cloned into projects/<org>/<name>/<repo name>
   - { name: app, url: "git@github.com:example-org/app.git", default: true }   # default: where agents run
+  # - { name: stack }       # no url: a folder each engineer provides (e.g. not a git repo); ./setup creates it empty
 test:                      # recorded in each generated agent.yml
   app: "npm test"

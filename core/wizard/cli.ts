@@ -4,7 +4,7 @@
  *   ./setup                          bootstrap: AI provider, agent, smoke test, then hand over to the agent (/workspace-setup)
  *   ./setup check                    show which tools are installed
  *   ./setup org add <git-url>        clone an org repo into orgs/<id>
- *   ./setup project add <org>/<p>    clone an org project's repos into projects/<org>/<name>/
+ *   ./setup project add <org>/<p>    set up an org project's repos in projects/<org>/<name>/ (clone, or empty folder without a url)
  *   ./setup role add <org>/<p> <r>   resolve a role (core → org → project) and generate its agent
  *   ./setup vault find|use <path>|new <path>
  *   ./setup verify                   check the workspace on disk
@@ -18,6 +18,7 @@ import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, saveW
 const CORE = join(import.meta.dir, "..");
 /** AGENT_WORKSPACE_ROOT points the commands at another workspace (used by tests and smoke runs). */
 const ROOT = process.env.AGENT_WORKSPACE_ROOT ?? join(CORE, "..");
+if (process.env.AGENT_WORKSPACE_ROOT) console.error(`workspace: ${ROOT} (from AGENT_WORKSPACE_ROOT)`);
 /** The folder ./setup was called from (the script cds to the tool root), for user-typed paths. */
 const CALLER_CWD = process.env.AGENT_WORKSPACE_CALLER_CWD ?? process.cwd();
 const TOOLS = ["git", "omp", "tern", "pass"];
@@ -101,8 +102,12 @@ function main(args: string[]): void {
       return void check();
     case "org add":
       return print(`added org ${orgAdd(ROOT, need(a, "git-url"), CORE)}`);
-    case "project add":
-      return print(`cloned into ${projectAdd(ROOT, need(a, "org/project"))}`);
+    case "project add": {
+      const { dir, repos } = projectAdd(ROOT, need(a, "org/project"));
+      const said = { cloned: "cloned", present: "already there, left as is", created: "created empty (no url: put its files there)" };
+      for (const r of repos) console.log(`${r.name}: ${said[r.status]}`);
+      return print(`agents run in ${dir}`);
+    }
     case "role add":
       return print(roleAdd(ROOT, CORE, need(a, "org/project"), need(b, "role")));
     case "vault find":

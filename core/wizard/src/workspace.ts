@@ -16,7 +16,8 @@ export interface Workspace {
 interface ProjectFile {
   id: string;
   name: string;
-  repos: { name: string; url: string; default?: boolean }[];
+  /** No url: a folder the engineer provides (e.g. not a git repo); ./setup only creates it empty. */
+  repos: { name: string; url?: string; default?: boolean }[];
   test?: Record<string, string>;
 }
 
@@ -24,6 +25,8 @@ const ID = /^[a-z][a-z0-9-]{0,31}$/;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 /** Tools that write files in omp; a read-only role denies all of them. */
 const FILE_WRITERS = ["edit", "write", "ast_edit"];
+/** Model role used for a tier when workspace.yml has no model for it (omp: --model @<role>). */
+const OMP_TIER_ROLE: Record<string, string> = { default: "@default", task: "@task", review: "@slow" };
 
 const yaml = (file: string): unknown => Bun.YAML.parse(readFileSync(file, "utf8"));
 const writeYaml = (file: string, value: unknown) => writeFileSync(file, Bun.YAML.stringify(value, null, 2));
@@ -104,7 +107,7 @@ function readProject(root: string, org: string, project: string): ProjectFile {
   if (!Array.isArray(p.repos) || p.repos.length === 0) throw new Error(`${file}: repos must list at least one repo`);
   for (const r of p.repos) {
     checkName("repo", r?.name);
-    if (typeof r.url !== "string" || !r.url) throw new Error(`${file}: repo ${r.name} needs a url`);
+    if (r.url !== undefined && (typeof r.url !== "string" || !r.url)) throw new Error(`${file}: repo ${r.name} has an empty url; drop the key for a folder you provide`);
   }
   return p;
 }
@@ -113,23 +116,27 @@ const projectDir = (root: string, org: string, p: ProjectFile) => join(root, "pr
 const defaultRepoDir = (root: string, org: string, p: ProjectFile) =>
   join(projectDir(root, org, p), (p.repos.find((r) => r.default) ?? p.repos[0]).name);
 
-/** Clones every repo of an org project into projects/<org>/<name>/<repo> and records it. Returns the default repo folder. */
-export function projectAdd(root: string, ref: string): string {
+/** Sets up every repo of an org project in projects/<org>/<name>/<repo> (clone, or an empty folder when it has no url) and records it. */
+export function projectAdd(root: string, ref: string): { dir: string; repos: { name: string; status: "cloned" | "present" | "created" }[] } {
   const { org, project } = parseRef(ref);
   const p = readProject(root, org, project);
-  for (const r of p.repos) {
+  const repos = p.repos.map((r) => {
     const dest = join(projectDir(root, org, p), r.name);
-    if (!existsSync(dest)) {
-      mkdirSync(projectDir(root, org, p), { recursive: true });
-      clone(r.url, dest);
+    if (existsSync(dest)) return { name: r.name, status: "present" as const };
+    mkdirSync(projectDir(root, org, p), { recursive: true });
+    if (!r.url) {
+      mkdirSync(dest);
+      return { name: r.name, status: "created" as const };
     }
-  }
+    clone(r.url, dest);
+    return { name: r.name, status: "cloned" as const };
+  });
   const ws = loadWorkspace(root);
   if (!ws.projects.some((x) => x.org === org && x.id === project)) {
     ws.projects.push({ org, id: project, name: p.name, roles: [] });
     saveWorkspace(root, ws);
   }
-  return defaultRepoDir(root, org, p);
+  return { dir: defaultRepoDir(root, org, p), repos };
 }
 
 const globToRegex = (glob: string) => new RegExp(`^${glob.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
@@ -155,7 +162,7 @@ function renderRoleMd(context: string, role: ResolvedRole): string {
     ...list("Must not", role.mustNot),
     ...list("Never modify these paths", role.readOnlyPaths),
     ...list("MCP servers you may use (no others)", role.mcp),
-    ...role.instructions.flatMap((i) => [`<!-- ${i.origin} -->`, i.text, ""]),
+    ...role.instructions.filter((i) => i.text).flatMap((i) => [`<!-- ${i.origin} -->`, i.text, ""]),
   ].join("\n");
 }
 
@@ -193,10 +200,13 @@ export function roleAdd(root: string, core: string, ref: string, roleId: string)
   for (const tool of role.tools.prompt) approval[tool] = "prompt";
   for (const tool of [...role.tools.deny, ...(role.writes ? [] : FILE_WRITERS)]) approval[tool] = "deny";
   // Read-only roles deny `write`; omp routes MCP calls through `write xd://…` unless tools.xdev is off.
-  writeYaml(join(dir, "overlay.yml"), { tools: { approval, ...(role.writes ? {} : { xdev: false }) } });
+  // A repo's own .mcp.json is not covered by the org's MCP allow and block lists, so agents never load it.
+  writeYaml(join(dir, "overlay.yml"), { tools: { approval, ...(role.writes ? {} : { xdev: false }) }, mcp: { enableProjectConfig: false } });
 
   const cwd = defaultRepoDir(root, org, p);
-  const model = role.model?.tier ? loadWorkspace(root).models?.[role.model.tier] : undefined;
+  const tier = role.model?.tier;
+  const model = tier ? (loadWorkspace(root).models?.[tier] ?? OMP_TIER_ROLE[tier]) : undefined;
+  if (tier && model === undefined) throw new Error(`role ${role.id}: model tier "${tier}" is not default, task or review; set models.${tier} in workspace.yml`);
   const omp = `omp --cwd ${shq(cwd)} --append-system-prompt ${shq(join(dir, "role.md"))} --config ${shq(join(dir, "overlay.yml"))}${model ? ` --model ${shq(model)}` : ""}`;
   const { instructions: _instructions, ...definition } = role;
   writeYaml(join(dir, "agent.yml"), { ...definition, org, project, cwd, test: p.test ?? {}, launch: { omp } });
@@ -307,6 +317,12 @@ export function verify(root: string): Check[] {
   const ws = loadWorkspace(root);
   const checks: Check[] = [];
   for (const tool of ["git", ws.tools?.agent ?? "omp"]) checks.push({ check: `${tool} installed`, ok: Bun.which(tool) !== null });
+  if (ws.projects.length === 0) {
+    const detail = ws.orgs.length
+      ? `no project yet; run ./setup project add ${ws.orgs[0].id}/<project>`
+      : "nothing configured yet; run /workspace-setup in omp, or ./setup org add <git-url>";
+    checks.push({ check: "at least one project set up", ok: false, detail });
+  }
   for (const o of ws.orgs) {
     checks.push({ check: `org ${o.id} present`, ok: existsSync(join(root, "orgs", o.id, "org.yml")) });
     const hits = denyWordHits(root, o.id);
@@ -320,7 +336,7 @@ export function verify(root: string): Check[] {
       checks.push({ check: `project ${p.org}/${p.id} defined`, ok: false, detail: (e as Error).message });
       continue;
     }
-    checks.push({ check: `project ${p.org}/${p.id} cloned`, ok: existsSync(repoDir), detail: repoDir });
+    checks.push({ check: `project ${p.org}/${p.id} present`, ok: existsSync(repoDir), detail: repoDir });
     for (const r of p.roles) {
       checks.push({ check: `agent ${p.org}/${p.id}/${r} generated`, ok: existsSync(join(root, "agents", p.org, p.id, r, "agent.yml")) });
     }

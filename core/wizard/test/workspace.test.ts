@@ -54,7 +54,7 @@ const readYaml = <T>(file: string) => Bun.YAML.parse(readFileSync(file, "utf8"))
 describe("orgAdd and projectAdd", () => {
   test("clones the org under its id and the project under projects/<org>/<name>/, and records both", () => {
     expect(orgAdd(root, orgRepo("acme"), CORE)).toBe("acme");
-    expect(projectAdd(root, "acme/example")).toBe(join(root, "projects", "acme", "example-project", "app"));
+    expect(projectAdd(root, "acme/example")).toEqual({ dir: join(root, "projects", "acme", "example-project", "app"), repos: [{ name: "app", status: "cloned" }] });
     expect(existsSync(join(root, "projects", "acme", "example-project", "app", "README.md"))).toBe(true);
     const ws = loadWorkspace(root);
     expect(ws.orgs.map((o) => o.id)).toEqual(["acme"]);
@@ -64,15 +64,28 @@ describe("orgAdd and projectAdd", () => {
   test("two orgs with the same project id get separate checkouts", () => {
     orgAdd(root, orgRepo("acme"), CORE);
     orgAdd(root, orgRepo("beta"), CORE);
-    expect(projectAdd(root, "acme/example")).not.toBe(projectAdd(root, "beta/example"));
+    expect(projectAdd(root, "acme/example").dir).not.toBe(projectAdd(root, "beta/example").dir);
     expect(readFileSync(join(root, "projects", "beta", "example-project", "app", "README.md"), "utf8")).toBe("beta");
   });
 
   test("adding the same project twice changes nothing", () => {
     orgAdd(root, orgRepo("acme"), CORE);
     projectAdd(root, "acme/example");
-    projectAdd(root, "acme/example");
+    expect(projectAdd(root, "acme/example").repos).toEqual([{ name: "app", status: "present" }]);
     expect(loadWorkspace(root).projects.length).toBe(1);
+  });
+
+  test("a repo without a url is a folder the engineer provides: created empty, never cloned", () => {
+    orgAdd(root, orgRepo("acme", { "projects/stack/project.yml": "id: stack\nname: stack\nrepos:\n  - { name: compose }\n" }), CORE);
+    const added = projectAdd(root, "acme/stack");
+    expect(added).toEqual({ dir: join(root, "projects", "acme", "stack", "compose"), repos: [{ name: "compose", status: "created" }] });
+    expect(existsSync(added.dir)).toBe(true);
+    expect(existsSync(join(added.dir, ".git"))).toBe(false);
+  });
+
+  test("an empty url is refused rather than treated as a folder to provide", () => {
+    orgAdd(root, orgRepo("acme", { "projects/bad/project.yml": 'id: bad\nname: bad\nrepos:\n  - { name: app, url: "" }\n' }), CORE);
+    expect(() => projectAdd(root, "acme/bad")).toThrow("has an empty url");
   });
 
   test("an unknown project names the ones that exist", () => {
@@ -90,7 +103,7 @@ describe("orgAdd and projectAdd", () => {
 describe("roleAdd", () => {
   test("a read-only role denies every file-writing tool and carries its rules and context in role.md", () => {
     orgAdd(root, orgRepo("acme", { "projects/example/context.md": "Example context.\n" }), CORE);
-    const repoDir = projectAdd(root, "acme/example");
+    const repoDir = projectAdd(root, "acme/example").dir;
     roleAdd(root, CORE, "acme/example", "support");
     const dir = join(root, "agents", "acme", "example", "support");
     expect(readYaml<Agent>(join(dir, "agent.yml")).cwd).toBe(repoDir);
@@ -112,7 +125,19 @@ describe("roleAdd", () => {
     roleAdd(root, CORE, "acme/example", "dev");
     const dir = join(root, "agents", "acme", "example", "dev");
     expect(readYaml<{ tools: { approval: Record<string, string> } }>(join(dir, "overlay.yml")).tools.approval.write).toBe("deny");
-    expect(readFileSync(join(dir, "role.md"), "utf8")).toContain("- vendor");
+    const md = readFileSync(join(dir, "role.md"), "utf8");
+    expect(md).toContain("- vendor");
+    expect(md).not.toContain("<!-- project:dev -->");
+  });
+
+  test("every agent ignores the project repo's own MCP config (the org's MCP lists do not cover it)", () => {
+    orgAdd(root, orgRepo("acme"), CORE);
+    projectAdd(root, "acme/example");
+    for (const r of ["dev", "support"]) {
+      roleAdd(root, CORE, "acme/example", r);
+      const overlay = readYaml<{ mcp?: { enableProjectConfig?: boolean } }>(join(root, "agents", "acme", "example", r, "overlay.yml"));
+      expect(overlay.mcp?.enableProjectConfig).toBe(false);
+    }
   });
 
   test("a read-only role keeps MCP tools callable on omp (xd:// devices go through write)", () => {
@@ -142,14 +167,35 @@ describe("roleAdd", () => {
     expect(md).toContain("Tracker: jira");
   });
 
-  test("the launch command uses absolute paths", () => {
+  test("the launch command uses absolute paths and the role's model tier", () => {
     orgAdd(root, orgRepo("acme"), CORE);
-    const repoDir = projectAdd(root, "acme/example");
+    const repoDir = projectAdd(root, "acme/example").dir;
     roleAdd(root, CORE, "acme/example", "dev");
     const dir = join(root, "agents", "acme", "example", "dev");
     expect(readYaml<Agent>(join(dir, "agent.yml")).launch.omp).toBe(
-      `omp --cwd '${repoDir}' --append-system-prompt '${join(dir, "role.md")}' --config '${join(dir, "overlay.yml")}'`,
+      `omp --cwd '${repoDir}' --append-system-prompt '${join(dir, "role.md")}' --config '${join(dir, "overlay.yml")}' --model '@default'`,
     );
+  });
+
+  test("a tier without a model in workspace.yml uses the agent's matching model role", () => {
+    orgAdd(root, orgRepo("acme"), CORE);
+    projectAdd(root, "acme/example");
+    const launch = (r: string) => readYaml<Agent>(join(root, "agents", "acme", "example", r, "agent.yml")).launch.omp;
+    roleAdd(root, CORE, "acme/example", "reviewer");
+    roleAdd(root, CORE, "acme/example", "support");
+    expect(launch("reviewer")).toEndWith("--model '@slow'");
+    expect(launch("support")).toEndWith("--model '@task'");
+    writeFileSync(join(root, "workspace.yml"), Bun.YAML.stringify({ ...loadWorkspace(root), models: { task: "acme-ai/small" } }));
+    roleAdd(root, CORE, "acme/example", "support");
+    expect(launch("support")).toEndWith("--model 'acme-ai/small'");
+  });
+
+  test("an unknown model tier without a model in workspace.yml is refused", () => {
+    orgAdd(root, orgRepo("acme", { "roles/dev/role.yml": "id: dev\nextends: core:dev\nmodel: { tier: fast }\n" }), CORE);
+    projectAdd(root, "acme/example");
+    expect(() => roleAdd(root, CORE, "acme/example", "dev")).toThrow('model tier "fast" is not default, task or review');
+    writeFileSync(join(root, "workspace.yml"), Bun.YAML.stringify({ ...loadWorkspace(root), models: { fast: "acme-ai/fast" } }));
+    expect(roleAdd(root, CORE, "acme/example", "dev").id).toBe("dev");
   });
 
   test("an org role that loosens its core role is refused", () => {
@@ -207,7 +253,15 @@ describe("verify", () => {
     orgAdd(root, orgRepo("acme"), CORE);
     projectAdd(root, "acme/example");
     rmSync(join(root, "projects", "acme"), { recursive: true });
-    expect(verify(root).filter((c) => !c.ok).map((c) => c.check)).toContain("project acme/example cloned");
+    expect(verify(root).filter((c) => !c.ok).map((c) => c.check)).toContain("project acme/example present");
+  });
+
+  test("an empty workspace says that nothing is set up yet", () => {
+    const check = verify(root).find((c) => c.check === "at least one project set up");
+    expect(check?.ok).toBe(false);
+    expect(check?.detail).toContain("/workspace-setup");
+    orgAdd(root, orgRepo("acme"), CORE);
+    expect(verify(root).find((c) => c.check === "at least one project set up")?.detail).toContain("./setup project add acme/<project>");
   });
 
   test("flags org deny words found in the tool repo's tracked files", () => {
