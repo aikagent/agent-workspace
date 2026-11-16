@@ -71,7 +71,13 @@ const ACCEPTED: Record<string, true> = {
 /** A value that already points at its secret (an omp command or a ${VAR} reference) instead of holding it. */
 const isReference = (v: unknown) => typeof v === "string" && (v.startsWith("!") || v.includes("${"));
 
-export type Imported = { entry: Record<string, unknown>; store: string[] } | { skip: string };
+/** A secret the engineer still has to store: a pass path, or (without pass) an environment variable name. */
+export interface ToStore {
+  ref: string;
+  note?: string;
+}
+
+export type Imported = { entry: Record<string, unknown>; store: ToStore[] } | { skip: string };
 
 /**
  * Converts a server from another tool's format to omp's (type, command, args, url, env, headers, cwd), with every env
@@ -93,7 +99,7 @@ export function toOmp(name: string, raw: Record<string, unknown>, secrets: "pass
   if (!url && args.length) entry.args = args;
   if (typeof raw.cwd === "string") entry.cwd = raw.cwd;
 
-  const store: string[] = [];
+  const store: ToStore[] = [];
   const varName = (k: string) => `${name}_${k}`.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
   const refs = (values: unknown, hint: string): Record<string, unknown> | undefined => {
     if (!isMap(values)) return undefined;
@@ -101,10 +107,10 @@ export function toOmp(name: string, raw: Record<string, unknown>, secrets: "pass
       Object.entries(values).map(([k, v]) => {
         if (isReference(v)) return [k, v];
         if (secrets === "pass") {
-          store.push(`pass insert ${prefix}/${name}/${k}${hint && k.toLowerCase() === "authorization" ? `   # ${hint}` : ""}`);
+          store.push({ ref: `${prefix}/${name}/${k}`, ...(hint && k.toLowerCase() === "authorization" ? { note: hint } : {}) });
           return [k, `!pass show ${prefix}/${name}/${k}`];
         }
-        store.push(`export ${varName(k)}='<full value>'`);
+        store.push({ ref: varName(k) });
         return [k, varName(k)];
       }),
     );

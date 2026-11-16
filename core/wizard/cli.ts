@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { spawnRunner, usage, usageLines } from "./src/omp";
+import { passChecks } from "./src/pass";
 import { runWizard } from "./src/tui";
 import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingLimits, routingOff, routingSet, useVault, verify } from "./src/workspace";
 
@@ -70,7 +71,7 @@ async function main(args: string[]): Promise<void> {
     case "vault new":
       return print(newVault(ROOT, need(a, "path"), CORE, CALLER_CWD));
     case "verify": {
-      const checks = verify(ROOT);
+      const checks = [...verify(ROOT), ...passChecks(homedir(), process.env)];
       for (const c of checks) console.log(`${c.ok ? "✓" : "✗"} ${c.check}${c.detail && !c.ok ? ` — ${c.detail}` : ""}`);
       if (checks.some((c) => !c.ok)) process.exitCode = 1;
       return;

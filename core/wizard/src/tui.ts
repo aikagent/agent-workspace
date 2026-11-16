@@ -7,6 +7,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { addToOmp, scanServers, toOmp } from "./mcp";
 import { CONTEXT_PROMPT, catalog, draft, hasOwnRouting, login, modelRoles, proposeRouting, smoke, usage, usageLines, type Runner } from "./omp";
+import { passChecks, passStore } from "./pass";
 import { STEPS, loadProgress, markDone, nextStep, restart, type Step } from "./progress";
 import {
   findVaults,
@@ -113,7 +114,16 @@ async function tools(ctx: Ctx): Promise<void> {
       throw new Error("omp was installed but is not on PATH; add its folder (default ~/.local/bin) to PATH and run ./setup again");
     }
   }
-  saveWorkspace(ctx.root, { ...ws, tools: { terminal: found.tern ? "tern" : "plain", secrets: found.pass ? "pass" : "env", ...ws.tools, agent } });
+  // Re-checked on every run, so installing pass later switches new MCP secrets to pass.
+  const usePass = found.pass && passStore(ctx.home, process.env) !== undefined;
+  if (!usePass) {
+    p.log.warn(
+      found.pass
+        ? "pass is installed but its store is not set up: run pass init <gpg-id>. Until then, MCP secrets become environment variables."
+        : "pass is not installed (brew install pass, or apt install pass, then pass init <gpg-id>). Until then, MCP secrets become environment variables.",
+    );
+  }
+  saveWorkspace(ctx.root, { ...ws, tools: { ...ws.tools, terminal: found.tern ? "tern" : "plain", secrets: usePass ? "pass" : "env", agent } });
 }
 
 // No p.spinner() around blocking child processes: it never animates (the event loop is blocked) and its raw terminal
@@ -255,8 +265,9 @@ async function mcp(ctx: Ctx): Promise<void> {
   );
   if (!picked.length) return;
   const secrets = ws.tools?.secrets === "pass" ? "pass" : "env";
-  const prefix = secrets === "pass" ? answer(await p.text({ message: "pass folder for these secrets", initialValue: "mcp" })).trim() || "mcp" : "";
-  const toStore: string[] = [];
+  const folder = `work/${ws.orgs[0]?.id ? `${ws.orgs[0].id}/` : ""}mcp`;
+  const prefix = secrets === "pass" ? answer(await p.text({ message: "pass folder for these secrets (<folder>/<server>/<key>)", initialValue: folder })).trim() || folder : "";
+  const later: string[] = [];
   for (const name of picked) {
     const f = candidates.find((c) => c.name === name);
     if (!f) continue;
@@ -268,10 +279,20 @@ async function mcp(ctx: Ctx): Promise<void> {
     p.note(JSON.stringify(imported.entry, null, 2), `${name} for ${ompFile.replace(ctx.home, "~")}`);
     if (!answer(await p.confirm({ message: `Add ${name} to omp?` }))) continue;
     addToOmp(ompFile, name, imported.entry);
-    toStore.push(...imported.store);
     p.log.success(`Added ${name}`);
+    for (const s of imported.store) {
+      if (secrets === "env") {
+        later.push(`export ${s.ref}='<full value>'`);
+        continue;
+      }
+      // pass prompts for the value itself (hidden, typed twice); the wizard never sees it.
+      if (s.note) p.log.info(`${s.ref}: ${s.note}`);
+      const now = answer(await p.confirm({ message: `Store ${s.ref} in pass now?`, initialValue: true }));
+      if (now && ctx.run("pass", ["insert", s.ref], { cwd: ctx.root, inherit: true }).status === 0) p.log.success(`Stored ${s.ref}`);
+      else later.push(`pass insert ${s.ref}${s.note ? `   # ${s.note}` : ""}`);
+    }
   }
-  if (toStore.length) p.note(toStore.join("\n"), secrets === "pass" ? "Store these secrets with pass" : "Set these environment variables (e.g. in your shell profile)");
+  if (later.length) p.note(later.join("\n"), secrets === "pass" ? "Still to store in pass" : "Set these environment variables (e.g. in your shell profile)");
 }
 
 async function routing(ctx: Ctx): Promise<void> {
@@ -356,7 +377,7 @@ async function vault(ctx: Ctx): Promise<void> {
 
 async function verifyScreen(ctx: Ctx): Promise<void> {
   for (;;) {
-    const checks = verify(ctx.root);
+    const checks = [...verify(ctx.root), ...passChecks(ctx.home, process.env)];
     p.note(checks.map((c) => `${c.ok ? "✓" : "✗"} ${c.check}${c.ok || !c.detail ? "" : ` — ${c.detail}`}`).join("\n"), "Verify");
     if (checks.every((c) => c.ok)) return;
     const back = answer(

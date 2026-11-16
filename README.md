@@ -20,6 +20,10 @@ cd agent-workspace
 
 Progress is saved after each step: if you stop (Ctrl+C) or a step fails, the next `./setup` offers to resume where you left off. Run it again later to change one step. Every write outside this folder (your omp MCP config) happens only after your yes.
 
+### Secrets
+
+Secrets go to [pass](https://www.passwordstore.org/). When the wizard adds an MCP server from another agent, every token or key becomes a `!pass show work/<org>/mcp/<server>/<key>` reference in omp's config, and the wizard runs `pass insert` so you type the value straight into pass; it never sees or copies it. `./setup verify` checks that every referenced entry exists. Without pass (or before `pass init <gpg-id>`), the wizard warns on every run and uses environment variable names instead. Provider sign-in stays with `omp login`, which keeps its own credentials.
+
 ## Commands
 
 | Command | Does |

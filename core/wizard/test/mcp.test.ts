@@ -45,7 +45,7 @@ describe("toOmp", () => {
   test("Claude/Cursor shape: env and header values become pass references", () => {
     const r = imported("tracker", { type: "http", url: "https://t.example", headers: { Authorization: `Bearer ${SECRET}` } });
     expect(r.entry).toEqual({ type: "http", url: "https://t.example", headers: { Authorization: "!pass show mcp/tracker/Authorization" } });
-    expect(r.store).toEqual(['pass insert mcp/tracker/Authorization   # the full value, e.g. "Bearer <token>"']);
+    expect(r.store).toEqual([{ ref: "mcp/tracker/Authorization", note: 'the full value, e.g. "Bearer <token>"' }]);
   });
 
   test("OpenCode shape: local command array and environment map", () => {
@@ -71,7 +71,7 @@ describe("toOmp", () => {
   test("without pass, each value gets its own shell-safe variable name", () => {
     const r = imported("my-tracker", { url: "https://t.example", headers: { "X-API-Key": SECRET } }, "env");
     expect(r.entry).toEqual({ type: "http", url: "https://t.example", headers: { "X-API-Key": "MY_TRACKER_X_API_KEY" } });
-    expect(r.store).toEqual(["export MY_TRACKER_X_API_KEY='<full value>'"]);
+    expect(r.store).toEqual([{ ref: "MY_TRACKER_X_API_KEY" }]);
   });
 
   test("an entry without env or headers is copied as is", () => {
