@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingLimits, routingOff, routingSet, useVault, verify } from "../src/workspace";
+import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingLimits, routingOff, routingSet, saveContext, useVault, verify } from "../src/workspace";
 
 const CORE = join(import.meta.dir, "..", "..");
 const git = (cwd: string, ...args: string[]) =>
@@ -277,6 +277,18 @@ describe("verify", () => {
     rmSync(join(root, "gone.md"));
     orgAdd(root, orgRepo("acme", { "denywords.txt": "initech\n" }), CORE);
     expect(verify(root).find((c) => c.check === "no org acme words in the tool repo")?.ok).toBe(true);
+  });
+});
+
+describe("saveContext", () => {
+  test("writes the org project's context.md and refreshes that project's agents", () => {
+    orgAdd(root, orgRepo("acme"), CORE);
+    projectAdd(root, "acme/example");
+    roleAdd(root, CORE, "acme/example", "dev");
+    const file = saveContext(root, CORE, "acme/example", "# Example\nBuild with make.");
+    expect(file).toBe(join(root, "orgs", "acme", "projects", "example", "context.md"));
+    expect(readFileSync(file, "utf8")).toBe("# Example\nBuild with make.\n");
+    expect(readFileSync(join(root, "agents", "acme", "example", "dev", "role.md"), "utf8")).toContain("Build with make.");
   });
 });
 

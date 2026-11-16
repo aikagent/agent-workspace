@@ -249,6 +249,17 @@ export function roleAdd(root: string, core: string, ref: string, roleId: string)
   return role;
 }
 
+/** Writes an org project's context.md in the local org checkout and regenerates that project's agents. */
+export function saveContext(root: string, core: string, ref: string, text: string): string {
+  const { org, project } = parseRef(ref);
+  readProject(root, org, project);
+  const file = join(root, "orgs", org, "projects", project, "context.md");
+  writeFileSync(file, `${text.trim()}\n`);
+  const entry = loadWorkspace(root).projects.find((p) => p.org === org && p.id === project);
+  for (const r of entry?.roles ?? []) roleAdd(root, core, ref, r);
+  return file;
+}
+
 const DEFAULT_LIMITS = { short: 95, week: 80 };
 const MODEL = /^[A-Za-z0-9][\w.-]*\/\S+$/;
 
