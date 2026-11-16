@@ -1,0 +1,9 @@
+id: dev
+description: Changes code in one project, test first, with evidence for every acceptance criterion
+writes: true
+model: { tier: default }
+tools:
+  prompt: [bash]
+mustNot:
+  - "no commits unless the engineer asked for one"
+  - "no pushes, no pull requests, no tracker status changes"

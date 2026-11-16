@@ -1,0 +1,11 @@
+#!/bin/sh
+# agent-workspace setup entry point. Needs bun (https://bun.sh); everything else is checked by the wizard.
+set -e
+AGENT_WORKSPACE_CALLER_CWD="$PWD"
+export AGENT_WORKSPACE_CALLER_CWD
+cd "$(dirname "$0")"
+if ! command -v bun >/dev/null 2>&1; then
+  echo "agent-workspace needs bun. Install it from https://bun.sh, then run ./setup again." >&2
+  exit 1
+fi
+exec bun core/wizard/cli.ts "$@"

@@ -1,0 +1,8 @@
+id: reviewer
+description: Read-only review of a change against standards and against its spec, reported separately
+writes: false
+model: { tier: review }
+tools:
+  deny: [edit, write]
+mustNot:
+  - "no file changes"

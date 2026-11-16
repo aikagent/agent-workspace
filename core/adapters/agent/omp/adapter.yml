@@ -1,0 +1,7 @@
+# How a generated agent (agents/<org>/<project>/<role>/) runs on omp.
+id: omp
+slot: agent
+launch: agent.yml → launch.omp   # absolute paths: --cwd <repo> --append-system-prompt role.md --config overlay.yml [--model]
+generated:                       # what ./setup role add writes for omp
+  overlay.yml: tools.approval — deny for denied tools (and edit, write, ast_edit for read-only roles), prompt for prompted tools
+  role.md: project context, must-not rules, read-only paths, allowed MCP servers, role instructions (instruction only)

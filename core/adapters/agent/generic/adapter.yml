@@ -1,0 +1,4 @@
+# Any agent that reads instructions. Nothing is enforced mechanically: role.md is the only input.
+id: generic
+slot: agent
+launch: open the agent in agent.yml → cwd and give it role.md as its first message

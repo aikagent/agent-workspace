@@ -1,0 +1,6 @@
+id: example                # lowercase letters, digits, dashes; used in <org>/<project>
+name: example-project      # folder name under projects/<org>/
+repos:                     # cloned into projects/<org>/<name>/<repo name>
+  - { name: app, url: "git@github.com:example-org/app.git", default: true }   # default: where agents run
+test:                      # recorded in each generated agent.yml
+  app: "npm test"

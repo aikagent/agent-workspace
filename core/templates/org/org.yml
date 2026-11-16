@@ -1,0 +1,7 @@
+# Organisation layer. Copy this folder into its own private repo, fill it in,
+# then run `./setup org add <git-url>` from the tool.
+id: example            # lowercase letters, digits, dashes; the folder name under orgs/
+name: Example Org
+hosts:                 # written into every project agent's role.md: which pull-request tool each code host uses
+  - { match: "github.com/example-org", prTool: gh }
+tracker: none          # written into role.md unless "none" (e.g. linear, jira, github)

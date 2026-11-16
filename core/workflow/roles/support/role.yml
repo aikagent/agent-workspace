@@ -1,0 +1,10 @@
+id: support
+description: Read-only investigation that answers a question with evidence
+writes: false
+model: { tier: task }
+tools:
+  deny: [edit, write]
+  prompt: [bash]
+mustNot:
+  - "no file changes"
+  - "no commits"

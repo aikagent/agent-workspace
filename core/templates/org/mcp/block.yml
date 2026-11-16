@@ -1,0 +1,2 @@
+# MCP servers that must never be used by this org's roles, by name or glob (e.g. "*-prod-db").
+servers: []

@@ -1,0 +1,8 @@
+{
+  "name": "agent-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test core/wizard/test"
+  }
+}

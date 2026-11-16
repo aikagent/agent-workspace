@@ -1,0 +1,10 @@
+id: ops
+description: Runs approved project scripts and reports their output; changes no files
+writes: false
+model: { tier: task }
+tools:
+  deny: [edit, write]
+  prompt: [bash]
+mustNot:
+  - "no file changes"
+  - "only scripts this project documents"

@@ -1,0 +1,2 @@
+# Words or hostnames from this org that must never appear in the tool repo.
+# ./setup verify checks the tool repo's tracked files for them (case-insensitive), one per line.
