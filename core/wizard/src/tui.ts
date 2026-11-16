@@ -161,7 +161,7 @@ async function projects(ctx: Ctx): Promise<void> {
   const ws = loadWorkspace(ctx.root);
   for (const o of ws.orgs) {
     const dir = join(ctx.root, "orgs", o.id, "projects");
-    const offered = subdirs(dir).filter((id) => existsSync(join(dir, id, "project.yml")));
+    const offered = subdirs(dir).filter((id) => existsSync(join(dir, id, "project.yml"))).sort();
     const added = ws.projects.filter((x) => x.org === o.id).map((x) => x.id);
     if (added.length) p.log.info(`${o.id}: already added ${added.join(", ")}`);
     const rest = offered.filter((id) => !added.includes(id));
