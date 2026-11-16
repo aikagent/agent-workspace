@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, useVault, verify } from "../src/workspace";
+import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingLimits, routingOff, routingSet, useVault, verify } from "../src/workspace";
 
 const CORE = join(import.meta.dir, "..", "..");
 const git = (cwd: string, ...args: string[]) =>
@@ -277,5 +277,51 @@ describe("verify", () => {
     rmSync(join(root, "gone.md"));
     orgAdd(root, orgRepo("acme", { "denywords.txt": "initech\n" }), CORE);
     expect(verify(root).find((c) => c.check === "no org acme words in the tool repo")?.ok).toBe(true);
+  });
+});
+
+describe("routing", () => {
+  type Overlay = { retry?: { usageAwareFallback: boolean; usageReservePct: number; fallbackChains: Record<string, string[]> } };
+  const agentDir = () => join(root, "agents", "acme", "example", "support");
+
+  test("turning routing on regenerates existing agents with the router and limit fallback", () => {
+    orgAdd(root, orgRepo("acme"), CORE);
+    projectAdd(root, "acme/example");
+    roleAdd(root, CORE, "acme/example", "support");
+    routingSet(root, CORE, "task", ["a/one", "b/two"]);
+    const overlay = readYaml<Overlay>(join(agentDir(), "overlay.yml"));
+    expect(overlay.retry).toEqual({
+      usageAwareFallback: true,
+      usageReservePolicy: "auto",
+      usageReservePct: 5,
+      fallbackChains: { task: ["a/one", "b/two"] },
+    } as Overlay["retry"]);
+    const launch = readYaml<Agent>(join(agentDir(), "agent.yml")).launch.omp;
+    expect(launch).toStartWith(`AGENT_WORKSPACE_ROUTING='${join(root, "agents", "routing.json")}' omp `);
+    expect(launch).toContain(`-e '${join(CORE, "adapters", "agent", "omp", "usage-router", "index.ts")}'`);
+    expect(readYaml<unknown>(join(root, "agents", "routing.json"))).toEqual({ short: 95, week: 80, roles: { task: ["a/one", "b/two"] } });
+
+    routingLimits(root, CORE, 90, 70);
+    expect(readYaml<Overlay>(join(agentDir(), "overlay.yml")).retry?.usageReservePct).toBe(10);
+    expect(readYaml<{ week: number }>(join(root, "agents", "routing.json")).week).toBe(70);
+  });
+
+  test("turning routing off restores the plain agent", () => {
+    orgAdd(root, orgRepo("acme"), CORE);
+    projectAdd(root, "acme/example");
+    roleAdd(root, CORE, "acme/example", "support");
+    const plain = readFileSync(join(agentDir(), "agent.yml"), "utf8");
+    routingSet(root, CORE, "task", ["a/one"]);
+    routingOff(root, CORE);
+    expect(readFileSync(join(agentDir(), "agent.yml"), "utf8")).toBe(plain);
+    expect(readYaml<Overlay>(join(agentDir(), "overlay.yml")).retry).toBeUndefined();
+    expect(loadWorkspace(root).routing).toBeUndefined();
+  });
+
+  test("models must be provider/model and limits whole percentages", () => {
+    expect(() => routingSet(root, CORE, "task", ["sonnet"])).toThrow('model "sonnet" must be <provider>/<model>');
+    expect(() => routingSet(root, CORE, "task", [])).toThrow("at least one model");
+    expect(() => routingSet(root, CORE, "Task", ["a/one"])).toThrow('role "Task"');
+    expect(() => routingLimits(root, CORE, 0, 80)).toThrow("between 1 and 100");
   });
 });

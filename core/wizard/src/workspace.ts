@@ -11,6 +11,15 @@ export interface Workspace {
   orgs: { id: string; url: string }[];
   projects: { org: string; id: string; name: string; roles: string[] }[];
   notes?: { kind: "none" | "vault"; path?: string; folders?: Record<string, string> };
+  /** Usage-based model routing for project agents (omp). Absent = off: agents use the engineer's own omp setup. */
+  routing?: Routing;
+}
+
+/** short/week: percent used at which a provider is skipped; roles: omp model role → models in preference order. */
+interface Routing {
+  short: number;
+  week: number;
+  roles: Record<string, string[]>;
 }
 
 interface ProjectFile {
@@ -201,13 +210,33 @@ export function roleAdd(root: string, core: string, ref: string, roleId: string)
   for (const tool of [...role.tools.deny, ...(role.writes ? [] : FILE_WRITERS)]) approval[tool] = "deny";
   // Read-only roles deny `write`; omp routes MCP calls through `write xd://…` unless tools.xdev is off.
   // A repo's own .mcp.json is not covered by the org's MCP allow and block lists, so agents never load it.
-  writeYaml(join(dir, "overlay.yml"), { tools: { approval, ...(role.writes ? {} : { xdev: false }) }, mcp: { enableProjectConfig: false } });
+  const routing = loadWorkspace(root).routing;
+  const routingFile = join(root, "agents", "routing.json");
+  if (routing) writeFileSync(routingFile, JSON.stringify(routing, null, 2));
+  // The agent's own session: omp's default fallback walks the role's models on any provider error, usage limits
+  // included; the usage-aware preflight switches once the most-used window is within the reserve.
+  const retry = routing && {
+    usageAwareFallback: true,
+    usageReservePolicy: "auto",
+    usageReservePct: 100 - routing.short,
+    fallbackChains: routing.roles,
+  };
+  writeYaml(join(dir, "overlay.yml"), {
+    tools: { approval, ...(role.writes ? {} : { xdev: false }) },
+    mcp: { enableProjectConfig: false },
+    ...(retry ? { retry } : {}),
+  });
 
   const cwd = defaultRepoDir(root, org, p);
   const tier = role.model?.tier;
   const model = tier ? (loadWorkspace(root).models?.[tier] ?? OMP_TIER_ROLE[tier]) : undefined;
   if (tier && model === undefined) throw new Error(`role ${role.id}: model tier "${tier}" is not default, task or review; set models.${tier} in workspace.yml`);
-  const omp = `omp --cwd ${shq(cwd)} --append-system-prompt ${shq(join(dir, "role.md"))} --config ${shq(join(dir, "overlay.yml"))}${model ? ` --model ${shq(model)}` : ""}`;
+  const omp = [
+    ...(routing ? [`AGENT_WORKSPACE_ROUTING=${shq(routingFile)}`] : []),
+    `omp --cwd ${shq(cwd)} --append-system-prompt ${shq(join(dir, "role.md"))} --config ${shq(join(dir, "overlay.yml"))}`,
+    ...(routing ? [`-e ${shq(join(core, "adapters", "agent", "omp", "usage-router", "index.ts"))}`] : []),
+    ...(model ? [`--model ${shq(model)}`] : []),
+  ].join(" ");
   const { instructions: _instructions, ...definition } = role;
   writeYaml(join(dir, "agent.yml"), { ...definition, org, project, cwd, test: p.test ?? {}, launch: { omp } });
 
@@ -218,6 +247,49 @@ export function roleAdd(root: string, core: string, ref: string, roleId: string)
     saveWorkspace(root, ws);
   }
   return role;
+}
+
+const DEFAULT_LIMITS = { short: 95, week: 80 };
+const MODEL = /^[A-Za-z0-9][\w.-]*\/\S+$/;
+
+/** Records the routing (or removes it) and regenerates every agent so launch commands and overlays follow it. */
+function applyRouting(root: string, core: string, routing: Routing | undefined): void {
+  const ws = loadWorkspace(root);
+  if (routing) ws.routing = routing;
+  else {
+    delete ws.routing;
+    rmSync(join(root, "agents", "routing.json"), { force: true });
+  }
+  saveWorkspace(root, ws);
+  for (const p of ws.projects) for (const r of p.roles) roleAdd(root, core, `${p.org}/${p.id}`, r);
+}
+
+/** Sets the models, in preference order, for one omp model role (e.g. default, task, slow, smol). Turns routing on. */
+export function routingSet(root: string, core: string, role: string, models: string[]): Routing {
+  checkId("role", role);
+  if (models.length === 0) throw new Error(`routing ${role}: list at least one model`);
+  for (const m of models) if (!MODEL.test(m)) throw new Error(`model "${m}" must be <provider>/<model>`);
+  const current = loadWorkspace(root).routing ?? { ...DEFAULT_LIMITS, roles: {} };
+  const routing = { ...current, roles: { ...current.roles, [role]: models } };
+  applyRouting(root, core, routing);
+  return routing;
+}
+
+/** Sets the percent used at which a provider is skipped, for short (under a day) and weekly windows. */
+export function routingLimits(root: string, core: string, short: number, week: number): Routing {
+  for (const v of [short, week]) {
+    if (!Number.isInteger(v) || v < 1 || v > 100) throw new Error(`limits must be whole percentages between 1 and 100, got ${v}`);
+  }
+  const current = loadWorkspace(root).routing;
+  if (!current) throw new Error("routing is off; start with ./setup routing set <role> <model> …");
+  const routing = { ...current, short, week };
+  applyRouting(root, core, routing);
+  return routing;
+}
+
+/** Turns routing off: agents go back to the engineer's own omp setup. */
+export function routingOff(root: string, core: string): void {
+  applyRouting(root, core, undefined);
 }
 
 const NOTE_KINDS: Record<string, string> = {

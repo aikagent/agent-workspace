@@ -1,11 +1,12 @@
 # How a generated agent (agents/<org>/<project>/<role>/) runs on omp.
 id: omp
 slot: agent
-launch: agent.yml → launch.omp   # absolute paths: --cwd <repo> --append-system-prompt role.md --config overlay.yml --model <tier>
+launch: agent.yml → launch.omp   # absolute paths: --cwd <repo> --append-system-prompt role.md --config overlay.yml --model <tier>; with routing on also AGENT_WORKSPACE_ROUTING=<agents/routing.json> and -e usage-router/index.ts
 tiers:                           # role model tier → omp model role, unless workspace.yml models sets the tier
   default: "@default"
   task: "@task"
   review: "@slow"
 generated:                       # what ./setup role add writes for omp
-  overlay.yml: tools.approval — deny for denied tools (and edit, write, ast_edit for read-only roles), prompt for prompted tools; tools.xdev false for read-only roles; mcp.enableProjectConfig false (the repo's own MCP config is never loaded)
+  overlay.yml: tools.approval — deny for denied tools (and edit, write, ast_edit for read-only roles), prompt for prompted tools; tools.xdev false for read-only roles; mcp.enableProjectConfig false (the repo's own MCP config is never loaded); with routing on, retry (usage-aware fallback with reserve 100 − short, fallbackChains = routing roles; other global chains kept)
+  routing.json: workspace.yml routing, read by usage-router/index.ts for subagent spawns
   role.md: project context, must-not rules, read-only paths, allowed MCP servers, role instructions (instruction only)

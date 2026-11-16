@@ -7,13 +7,30 @@
  *   ./setup project add <org>/<p>    set up an org project's repos in projects/<org>/<name>/ (clone, or empty folder without a url)
  *   ./setup role add <org>/<p> <r>   resolve a role (core → org → project) and generate its agent
  *   ./setup vault find|use <path>|new <path>
+ *   ./setup routing show             signed-in providers with their usage, and the workspace routing (off by default)
+ *   ./setup routing set <role> <provider/model>...   models for an omp model role, in preference order (turns routing on)
+ *   ./setup routing limits <short%> <week%>          percent used at which a provider is skipped (default 95 80)
+ *   ./setup routing off              agents go back to your own omp setup
  *   ./setup verify                   check the workspace on disk
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, saveWorkspace, useVault, verify } from "./src/workspace";
+import {
+  findVaults,
+  loadWorkspace,
+  newVault,
+  orgAdd,
+  projectAdd,
+  roleAdd,
+  routingLimits,
+  routingOff,
+  routingSet,
+  saveWorkspace,
+  useVault,
+  verify,
+} from "./src/workspace";
 
 const CORE = join(import.meta.dir, "..");
 /** AGENT_WORKSPACE_ROOT points the commands at another workspace (used by tests and smoke runs). */
@@ -84,7 +101,7 @@ function bootstrap(): void {
   ws.tools = { terminal: found.tern ? "tern" : "plain", secrets: found.pass ? "pass" : "env", ...ws.tools, agent: "omp" };
   saveWorkspace(ROOT, ws);
 
-  console.log("\n5. Hand-over: omp will now guide the rest (orgs, projects, roles, MCP, vault).");
+  console.log("\n5. Hand-over: omp will now guide the rest (orgs, projects, roles, MCP, model routing, vault).");
   if (confirm("Start omp with /workspace-setup now?")) run("omp", ["/workspace-setup"], { inherit: true });
   else console.log("Later, run `omp` in this folder and type /workspace-setup.");
 }
@@ -95,11 +112,20 @@ function print(value: unknown): void {
 
 function main(args: string[]): void {
   const [cmd, sub, a, b] = args;
-  switch (`${cmd ?? ""} ${cmd === "org" || cmd === "project" || cmd === "role" || cmd === "vault" ? sub ?? "" : ""}`.trim()) {
+  switch (`${cmd ?? ""} ${["org", "project", "role", "vault", "routing"].includes(cmd ?? "") ? sub ?? "" : ""}`.trim()) {
     case "":
       return bootstrap();
     case "check":
       return void check();
+    case "routing show":
+      return print({ routing: loadWorkspace(ROOT).routing ?? "off", usage: usage() });
+    case "routing set":
+      return print(routingSet(ROOT, CORE, need(a, "model role"), args.slice(3)));
+    case "routing limits":
+      return print(routingLimits(ROOT, CORE, Number(need(a, "short%")), Number(need(b, "week%"))));
+    case "routing off":
+      routingOff(ROOT, CORE);
+      return print("routing off");
     case "org add":
       return print(`added org ${orgAdd(ROOT, need(a, "git-url"), CORE)}`);
     case "project add": {
@@ -126,6 +152,24 @@ function main(args: string[]): void {
       console.log(readFileSync(import.meta.path, "utf8").split("*/")[0].replace(/^#!.*\n\/\*\*\n/, "").replace(/^ \* ?/gm, ""));
       process.exitCode = cmd === "help" || cmd === "--help" ? 0 : 1;
   }
+}
+
+/** Percent used per provider account and window, from `omp usage --json` (only providers that report usage). */
+function usage(): Record<string, string[]> {
+  const r = spawnSync("omp", ["usage", "--json"], { cwd: ROOT, env: process.env, encoding: "utf8" });
+  if (r.status !== 0) return {};
+  type Limit = { id: string; window?: { label?: string }; scope?: { tier?: string; shared?: boolean }; amount?: { usedFraction?: number } };
+  const reports: { provider: string; limits: Limit[] }[] = JSON.parse(r.stdout).reports ?? [];
+  const line = (l: Limit) =>
+    `${l.window?.label ?? l.id}${l.scope?.tier && !l.scope.shared ? ` (${l.scope.tier} only)` : ""}: ${Math.round((l.amount?.usedFraction ?? 0) * 100)}%`;
+  const count: Record<string, number> = {};
+  return Object.fromEntries(
+    reports.map((rep) => {
+      count[rep.provider] = (count[rep.provider] ?? 0) + 1;
+      const key = count[rep.provider] > 1 ? `${rep.provider} (account ${count[rep.provider]})` : rep.provider;
+      return [key, rep.limits.filter((l) => typeof l.amount?.usedFraction === "number").map(line)];
+    }),
+  );
 }
 
 function need(value: string | undefined, name: string): string {
