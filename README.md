@@ -102,7 +102,7 @@ The Main session hands a bounded task to a project agent and gets the result bac
 | `dispatch_project(…)` | Fire and forget; `/delegations` lists results later |
 | `/delegate <project>[:<role>] …`, `/ask`, `/dispatch`, `/projects`, `/delegations` | The same as commands |
 
-- **On screen (Tern):** Main stays on the left. Each agent opens as a split on the right, stacked top to bottom, and Main keeps focus. An agent keeps its conversation; the next task for the same role goes to it.
+- **On screen (Tern):** Main stays on the left. Each agent opens as a split on the right, stacked top to bottom, and Main keeps focus. When it finishes it is parked and keeps its conversation; the next task for the same role goes to it. Clicking Tern's notification that an agent finished opens it again; it stays open until its next task.
 - **Questions and approvals:** an agent asks through `request_decision`, answered in a dialog in Main; tool approvals show in the agent's split.
 - **Roles still apply:** agents start with their own `role.md` and `overlay.yml`. A second writing role on the same checkout waits in the queue; read-only roles run alongside. Only Main marks a criterion met; the agent's result is cross-checked against its transcript and mismatches come back as warnings.
 
