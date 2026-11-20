@@ -251,7 +251,7 @@ pre.term .c{color:var(--on-dark-3)}
         <h1><span class="w"><span style="--wi:0">Clone.</span></span> <span class="w"><span style="--wi:1">Set up.</span></span> <span class="w"><span style="--wi:2">Work.</span></span></h1>
         <p class="lead">agent-workspace turns the projects you work on into a workspace of AI agents: one agent per project and role, each with your team's rules, the project's context and only the tools its role allows. A terminal wizard sets everything up.</p>
         <dl class="facts">
-          <div style="--i:0;--fc:var(--green)"><dt><span class="lamp on"></span>Wizard steps</dt><dd>12</dd></div>
+          <div style="--i:0;--fc:var(--green)"><dt><span class="lamp on"></span>Wizard steps</dt><dd>13</dd></div>
           <div style="--i:1;--fc:var(--forest-mid)"><dt><span class="lamp fm"></span>Core roles</dt><dd>4</dd></div>
           <div style="--i:2;--fc:var(--amber)"><dt><span class="lamp am"></span>Role levels</dt><dd>3</dd></div>
           <div style="--i:3;--fc:var(--green)"><dt><span class="lamp on"></span>Secrets copied</dt><dd>0</dd></div>
@@ -282,8 +282,8 @@ cd agent-workspace
   </section>
 
   <section class="area enter" id="s3">
-    <div class="ahead"><div><span class="plate"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg>The wizard</span><h2>What ./setup walks you through</h2><p class="alead">One question at a time, with a default for each. Most steps write through the same <code>./setup</code> commands you can run by hand. Anything written outside this folder (your omp MCP config, pass entries) happens only after your yes.</p></div>
-      <div class="astats"><div><b>12</b><span><span class="lamp on"></span>steps</span></div><div><b>1</b><span><span class="lamp fm"></span>yes per outside write</span></div></div></div>
+    <div class="ahead"><div><span class="plate"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg>The wizard</span><h2>What ./setup walks you through</h2><p class="alead">One question at a time, with a default for each. Most steps write through the same <code>./setup</code> commands you can run by hand. Anything written outside this folder (your omp MCP config, pass entries, the Tern plugin link) happens only after your yes.</p></div>
+      <div class="astats"><div><b>13</b><span><span class="lamp on"></span>steps</span></div><div><b>1</b><span><span class="lamp fm"></span>yes per outside write</span></div></div></div>
     <div class="board"><div class="board-head"><span class="board-title">Wizard steps, in order</span><span class="board-status"><span class="lamp on"></span>progress saved after each</span></div>
       <div class="rows"><div class="grp">Your machine</div>
         <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></span><div><div class="row-name">1 · Tools</div><div class="row-sub">git, omp, tern, pass</div></div></div><div class="row-api">Checks what is installed, asks which agent you use (omp recommended), offers to install omp, warns if pass is missing or not initialised.</div><div class="row-meta"><span class="chip c-done">every run</span></div></div>
@@ -297,10 +297,11 @@ cd agent-workspace
         <div class="grp">Your agent setup</div>
         <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v5a5 5 0 0 1-10 0zM12 17v4"/></svg></span><div><div class="row-name">8 · MCP servers</div><div class="row-sub">from your other agents</div></div></div><div class="row-api">Finds servers in Claude Code, Cursor, Gemini, Windsurf, VS Code, OpenCode and Codex configs, converts them to omp's format with secret references, and stores the secrets with pass.</div><div class="row-meta"><span class="chip c-prog">optional</span></div></div>
         <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M4 18c4 0 4-12 8-12s4 12 8 12"/></svg></span><div><div class="row-name">9 · Model routing</div><div class="row-sub">by provider usage</div></div></div><div class="row-api">Shows your providers' usage. Keeps your own setup if omp already routes; otherwise proposes an ordered model list per role.</div><div class="row-meta"><span class="chip c-prog">optional</span></div></div>
-        <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM9 9h6M9 13h6"/></svg></span><div><div class="row-name">10 · Notes vault</div><div class="row-sub">Obsidian or plain folders</div></div></div><div class="row-api">Uses a vault it finds, one you type, a new one with default folders, or none. Only the folder mapping is recorded.</div><div class="row-meta"><span class="chip c-prog">optional</span></div></div>
+        <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg></span><div><div class="row-name">10 · Delegation</div><div class="row-sub">Main → project agents</div></div></div><div class="row-api">Turns on delegation (default on when omp and Tern are found): every agent's launch command gets the delegation extension, then it shows <code>tern plugin link</code> and runs it after your yes. Projects imported or added later are covered automatically.</div><div class="row-meta"><span class="chip c-rev">./setup delegation on</span></div></div>
+        <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM9 9h6M9 13h6"/></svg></span><div><div class="row-name">11 · Notes vault</div><div class="row-sub">Obsidian or plain folders</div></div></div><div class="row-api">Uses a vault it finds, one you type, a new one with default folders, or none. Only the folder mapping is recorded.</div><div class="row-meta"><span class="chip c-prog">optional</span></div></div>
         <div class="grp">Finish</div>
-        <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg></span><div><div class="row-name">11 · Verify</div><div class="row-sub">✓ / ✗ list</div></div></div><div class="row-api">Checks tools, orgs, projects, agents, vault folders, org words in this repo and every pass reference. A ✗ offers to go back to that step.</div><div class="row-meta"><span class="chip c-done">./setup verify</span></div></div>
-        <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></svg></span><div><div class="row-name">12 · Finish</div><div class="row-sub">Main session</div></div></div><div class="row-api">Lists your agents with their launch commands, then offers to start the Main session: <code>omp</code> in the workspace folder.</div><div class="row-meta"><span class="chip c-done">done</span></div></div>
+        <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg></span><div><div class="row-name">12 · Verify</div><div class="row-sub">✓ / ✗ list</div></div></div><div class="row-api">Checks tools, orgs, projects, agents, vault folders, delegation (loader, Tern plugin, launch commands), org words in this repo and every pass reference. A ✗ offers to go back to that step.</div><div class="row-meta"><span class="chip c-done">./setup verify</span></div></div>
+        <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></svg></span><div><div class="row-name">13 · Finish</div><div class="row-sub">Main session</div></div></div><div class="row-api">Lists your agents with their launch commands, then offers to start the Main session: <code>omp</code> in the workspace folder.</div><div class="row-meta"><span class="chip c-done">done</span></div></div>
       </div></div>
   </section>
 
@@ -332,7 +333,7 @@ cd agent-workspace
   </section>
 
   <section class="area enter" id="s5">
-    <div class="ahead"><div><span class="plate"><svg viewBox="0 0 24 24"><path d="M12 3v18M5 8h14M7 14h10"/></svg>Roles</span><h2>Three levels, tighten only</h2><p class="alead">A role is defined in core, can be specialised by your org (<code>orgs/&lt;org&gt;/roles/</code>) and again by a project (<code>orgs/&lt;org&gt;/projects/&lt;p&gt;/roles/</code>). Each level points to its parent with <code>extends:</code> and can only tighten: deny or prompt tools, add read-only paths and must-not rules, turn writes off, narrow MCP servers.</p></div></div>
+    <div class="ahead"><div><span class="plate"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg>Roles</span><h2>Three levels, tighten only</h2><p class="alead">A role is defined in core, can be specialised by your org (<code>orgs/&lt;org&gt;/roles/</code>) and again by a project (<code>orgs/&lt;org&gt;/projects/&lt;p&gt;/roles/</code>). Each level points to its parent with <code>extends:</code> and can only tighten: deny or prompt tools, add read-only paths and must-not rules, turn writes off, narrow MCP servers.</p></div></div>
     <div class="board"><div class="board-head"><span class="board-title">Core roles</span><span class="board-status"><span class="lamp on"></span>model tier → omp model role</span></div>
       <div class="rows">
         <div class="row"><div class="row-id"><span class="tile"><svg viewBox="0 0 24 24"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 6l-2 12"/></svg></span><div><div class="row-name">dev</div><div class="row-sub">writes code</div></div></div><div class="row-api">Changes code in one project, test first, with evidence for every acceptance criterion.</div><div class="row-meta"><span class="chip c-rev">@default</span></div></div>
@@ -368,11 +369,29 @@ cd agent-workspace
     </div>
   </section>
 
+  <section class="area enter" id="s7b">
+    <div class="ahead"><div><span class="plate"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg></span>Delegation</span><h2>Main hands work to project agents</h2><p class="alead">With delegation on, the Main session (<code>omp</code> in the workspace folder) hands a bounded task to a project agent and gets the result back in the same conversation, with evidence for every acceptance criterion. Turn it on in the wizard or with <code>./setup delegation on</code>; nothing is written into <code>~/.omp</code>.</p></div></div>
+    <div class="cols">
+      <div class="col"><div class="colh"><h3><span class="lamp on"></span>From Main</h3></div><div class="cards">
+        <div class="card"><div class="ctitle">delegate_project</div><div class="cbody">Waits for the result: objective, numbered criteria, must-not rules, optional <code>role</code> (default <code>dev</code>; <code>ask_project</code> defaults to <code>support</code>).</div><div class="cfoot"><code>/delegate shop:dev …</code></div></div>
+        <div class="card"><div class="ctitle">dispatch_project</div><div class="cbody">Fire and forget; check it later with <code>/delegations</code>. Only Main marks a criterion met, after reading the evidence.</div><div class="cfoot"><code>/dispatch shop:ops …</code></div></div>
+      </div></div>
+      <div class="col"><div class="colh"><h3><span class="lamp fm"></span>On screen</h3></div><div class="cards">
+        <div class="card"><div class="ctitle">One column beside Main</div><div class="cbody">Main stays on the left. Each agent opens as a Tern split on the right, stacked top to bottom, and Main keeps focus. An agent keeps its conversation; the next task for the same role goes to it.</div></div>
+        <div class="card"><div class="ctitle">Questions and approvals</div><div class="cbody">An agent asks through <code>request_decision</code>, answered in a dialog in Main; tool approvals show in the agent's split.</div></div>
+      </div></div>
+      <div class="col"><div class="colh"><h3><span class="lamp am"></span>Guardrails</h3></div><div class="cards">
+        <div class="card"><div class="ctitle">The role still applies</div><div class="cbody">Agents start with their own <code>role.md</code> and <code>overlay.yml</code>: a read-only role cannot edit, a prompted tool still asks you.</div></div>
+        <div class="card"><div class="ctitle">One writer per checkout</div><div class="cbody">A second writing role on the same folder waits in the queue; read-only roles run alongside. The result is cross-checked against the agent's transcript, and mismatches come back as warnings.</div></div>
+      </div></div>
+    </div>
+  </section>
+
   <section class="area enter" id="s8">
     <div class="ahead"><div><span class="plate"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></svg>Daily use</span><h2>Start working</h2><p class="alead">The Main session is your entry point; project agents are where the work happens.</p></div></div>
     <div class="cols">
       <div class="col"><div class="colh"><h3><span class="lamp on"></span>Main session</h3></div><div class="cards"><div class="card"><div class="cbody">Run <code>omp</code> in the workspace folder. It follows the workflow rules in <code>AGENTS.md</code>.</div></div></div></div>
-      <div class="col"><div class="colh"><h3><span class="lamp fm"></span>A project agent</h3></div><div class="cards"><div class="card"><div class="cbody">Copy its launch command from <code>agents/&lt;org&gt;/&lt;project&gt;/&lt;role&gt;/agent.yml</code> (<code>launch.omp</code>) and run it in a terminal tab.</div></div></div></div>
+      <div class="col"><div class="colh"><h3><span class="lamp fm"></span>A project agent</h3></div><div class="cards"><div class="card"><div class="cbody">With delegation on, ask Main to delegate. Or copy its launch command from <code>agents/&lt;org&gt;/&lt;project&gt;/&lt;role&gt;/agent.yml</code> (<code>launch.omp</code>) and run it in a terminal tab.</div></div></div></div>
       <div class="col"><div class="colh"><h3><span class="lamp am"></span>Keep it healthy</h3></div><div class="cards"><div class="card"><div class="cbody"><code>./setup verify</code> after changes; <code>./setup</code> → Change one step to add a project or agent; <code>git pull</code> for tool updates (dependencies refresh on the next run).</div></div></div></div>
     </div>
     <div class="board" style="margin-top:14px"><div class="board-head"><span class="board-title">Commands</span><span class="board-status"><span class="lamp on"></span>./setup help</span></div>
@@ -384,6 +403,7 @@ cd agent-workspace
         <div class="row"><div class="row-id"><div><div class="row-name"><code>./setup role add &lt;org&gt;/&lt;project&gt; &lt;role&gt;</code></div></div></div><div class="row-api">Resolve the role and generate its agent.</div></div>
         <div class="row"><div class="row-id"><div><div class="row-name"><code>./setup vault find | use &lt;path&gt; | new &lt;path&gt;</code></div></div></div><div class="row-api">Use or create a notes vault.</div></div>
         <div class="row"><div class="row-id"><div><div class="row-name"><code>./setup routing show | set | limits | off</code></div></div></div><div class="row-api">Usage-based model routing.</div></div>
+        <div class="row"><div class="row-id"><div><div class="row-name"><code>./setup delegation on | off | show</code></div></div></div><div class="row-api">Main → project agent delegation: launch commands, Tern plugin, state.</div></div>
         <div class="row"><div class="row-id"><div><div class="row-name"><code>./setup verify</code></div></div></div><div class="row-api">Check everything on disk, including pass references.</div></div>
       </div></div>
   </section>
@@ -400,7 +420,7 @@ cd agent-workspace
         <div class="row"><div class="row-id"><div><div class="row-name"><code>denywords.txt</code></div></div></div><div class="row-api">Words that must never appear in this public repo; <code>./setup verify</code> checks them.</div></div>
       </div></div>
     <div class="dnote"><b>Not covered yet</b><ul>
-      <li><span>Delegation from the Main session to project agents, and Tern split panes: planned.</span></li>
+      <li><span>Delegation needs Tern for its split panes; with another terminal, start project agents by hand from their launch command.</span></li>
       <li><span>Org skills folder: planned; put skills in the agent's own skills folder for now.</span></li>
       <li><span>Agents other than omp get the workspace and generated instructions, but no sign-in, drafting, MCP import or routing.</span></li>
     </ul></div>
@@ -415,9 +435,10 @@ cd agent-workspace
   <a href="#s2"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Layers</span></a>
   <a href="#s3"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg><span>Wizard</span></a>
   <a href="#s3b"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></svg><span>Import</span></a>
-  <a href="#s5"><svg viewBox="0 0 24 24"><path d="M12 3v18M5 8h14"/></svg><span>Roles</span></a>
+  <a href="#s5"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg><span>Roles</span></a>
   <a href="#s6"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Secrets</span></a>
   <a href="#s7"><svg viewBox="0 0 24 24"><path d="M4 18c4 0 4-12 8-12s4 12 8 12"/></svg><span>Routing</span></a>
+  <a href="#s7b"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg><span>Delegation</span></a>
   <a href="#s8"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></svg><span>Daily use</span></a>
   <a href="#s9"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-5 7 5v13"/></svg><span>Org repo</span></a>
 </nav>
