@@ -1,4 +1,12 @@
-# agent-workspace
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-dark.png">
+    <img src="docs/brand/logo-light.png" alt="agent-workspace" width="420">
+  </picture>
+</p>
+
+<p align="center"><b>A workspace of AI agents for the projects you work on.</b><br>
+<a href="https://aikagent.github.io/agent-workspace/">User guide</a> · <a href="#quick-start">Quick start</a> · <a href="LICENSE">MIT</a></p>
 
 Clone this repo, run `./setup`, and get an AI-assisted engineering workflow for the projects you work on: one agent per project and role, each with your team's rules, the project's context and only the tools its role allows. A terminal wizard sets everything up.
 
