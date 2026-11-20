@@ -1,7 +1,7 @@
 # How a generated agent (agents/<org>/<project>/<role>/) runs on omp.
 id: omp
 slot: agent
-launch: agent.yml → launch.omp   # absolute paths: --cwd <repo> --append-system-prompt role.md --config overlay.yml --model <tier>; with routing on also AGENT_WORKSPACE_ROUTING=<agents/routing.json> and -e usage-router/index.ts
+launch: agent.yml → launch.omp   # absolute paths: --cwd <repo> --append-system-prompt role.md --config overlay.yml --model <tier>; with routing on also AGENT_WORKSPACE_ROUTING=<agents/routing.json> and -e usage-router/index.ts; with delegation on (workspace.yml `delegation: on`) also -e delegation/index.ts
 tiers:                           # role model tier → omp model role, unless workspace.yml models sets the tier
   default: "@default"
   task: "@task"

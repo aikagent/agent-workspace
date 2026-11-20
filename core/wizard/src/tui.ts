@@ -8,10 +8,12 @@ import { join, relative, resolve } from "node:path";
 import { readOrgProjects, runImport, scanSource, type Entry } from "./importer";
 import { addToOmp, scanServers, toOmp } from "./mcp";
 import { CONTEXT_PROMPT, catalog, draft, hasOwnRouting, login, modelRoles, proposeRouting, smoke, usage, usageLines, type Runner } from "./omp";
+import { delegationChecks, delegationOff, delegationOn, ternLinkArgs, ternLinkCommand } from "./delegation";
 import { passChecks, passStore } from "./pass";
 import { STEPS, loadProgress, markDone, nextStep, restart, type Step } from "./progress";
 import {
   findVaults,
+  delegationEnabled,
   loadWorkspace,
   newVault,
   orgAdd,
@@ -38,7 +40,7 @@ export interface Ctx {
 
 const PAUSED = "Setup paused; run ./setup to continue";
 /** Steps that need omp itself; skipped when the engineer uses another agent. */
-const OMP_ONLY: Step[] = ["signin", "context", "mcp", "routing"];
+const OMP_ONLY: Step[] = ["signin", "context", "mcp", "routing", "delegation"];
 
 /** Unwraps a prompt answer; Ctrl+C pauses the setup (progress up to the last finished step is kept). */
 function answer<T>(v: T | symbol): T {
@@ -449,6 +451,22 @@ async function routing(ctx: Ctx): Promise<void> {
   p.log.success("Routing set; agents regenerated");
 }
 
+async function delegation(ctx: Ctx): Promise<void> {
+  p.note(
+    "Main (omp in the workspace root) can hand work to your project agents: it asks them questions, delegates tasks and dispatches them,\nand each agent runs in its own Tern pane. Agents launch with one extra omp extension; nothing is written into ~/.omp.",
+    "Delegation",
+  );
+  if (!Bun.which("omp") || !Bun.which("tern")) return p.log.info("Delegation needs both omp and Tern, and one is not installed; turn it on later with ./setup delegation on");
+  const saved = loadWorkspace(ctx.root).delegation;
+  const on = answer(await p.confirm({ message: "Turn on delegation from Main to project agents?", initialValue: saved === undefined ? true : delegationEnabled(loadWorkspace(ctx.root)) }));
+  if (!on) return delegationOff(ctx.root, ctx.core);
+  delegationOn(ctx.root, ctx.core);
+  p.log.info(`Tern plugin: ${ternLinkCommand(ctx.core)}`);
+  if (answer(await p.confirm({ message: "Run it now?", initialValue: true }))) {
+    if (ctx.run("tern", ternLinkArgs(ctx.core), { cwd: ctx.root }).status !== 0) p.log.warn(`That failed; run: ${ternLinkCommand(ctx.core)}`);
+  } else p.log.warn(`Verify stays red until you run: ${ternLinkCommand(ctx.core)}`);
+}
+
 async function vault(ctx: Ctx): Promise<void> {
   const notes = loadWorkspace(ctx.root).notes;
   if (notes?.kind === "vault") p.log.info(`Vault: ${notes.path}`);
@@ -478,7 +496,7 @@ async function vault(ctx: Ctx): Promise<void> {
 
 async function verifyScreen(ctx: Ctx): Promise<void> {
   for (;;) {
-    const checks = [...verify(ctx.root), ...passChecks(ctx.home, process.env)];
+    const checks = [...verify(ctx.root), ...delegationChecks(ctx.root, ctx.core, ctx.home, ctx.run), ...passChecks(ctx.home, process.env)];
     p.note(checks.map((c) => `${c.ok ? "✓" : "✗"} ${c.check}${c.ok || !c.detail ? "" : ` — ${c.detail}`}`).join("\n"), "Verify");
     if (checks.every((c) => c.ok)) return;
     const back = answer(
@@ -502,6 +520,7 @@ async function finish(ctx: Ctx): Promise<void> {
       `Organisations: ${ws.orgs.map((o) => o.id).join(", ") || "none"}`,
       `Projects: ${ws.projects.map((x) => `${x.org}/${x.id}`).join(", ") || "none"}`,
       `Routing: ${ws.routing ? Object.keys(ws.routing.roles).join(", ") : "off"}`,
+      `Delegation: ${delegationEnabled(ws) ? "on" : "off"}`,
       `Vault: ${ws.notes?.kind === "vault" ? ws.notes.path : "none"}`,
     ].join("\n"),
     "Your workspace",
@@ -524,6 +543,7 @@ const SCREENS: Record<Step, (ctx: Ctx) => Promise<void>> = {
   context,
   mcp,
   routing,
+  delegation,
   vault,
   verify: verifyScreen,
   finish,

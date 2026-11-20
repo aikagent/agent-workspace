@@ -37,9 +37,10 @@ cd agent-workspace
 | 7 | Project context | omp reads each repo headless and read-only and drafts `context.md`. You see the draft and decide; an existing org file is kept unless you replace it. |
 | 8 | MCP servers | Finds servers configured for Claude Code, Cursor, Gemini, Windsurf, VS Code, OpenCode and Codex, converts them to omp's format and stores their secrets with pass. |
 | 9 | Model routing | Shows each provider's usage; keeps your own setup if omp already routes, otherwise proposes an ordered model list per role. |
-| 10 | Notes vault | Uses a vault it finds, one you type, a new one with default folders, or none. Only the folder mapping is recorded. |
-| 11 | Verify | ✓/✗ for tools, orgs, projects, agents, vault folders, org words in this repo and every pass reference. A ✗ offers to go back to that step. |
-| 12 | Finish | Lists your agents with their launch commands and offers to start the **Main session**: `omp` in this folder. |
+| 10 | Delegation | Explains Main→project-agent delegation; on by default when omp and Tern are found. Turns it on, then asks before linking the Tern plugin. |
+| 11 | Notes vault | Uses a vault it finds, one you type, a new one with default folders, or none. Only the folder mapping is recorded. |
+| 12 | Verify | ✓/✗ for tools, orgs, projects, agents, vault folders, delegation (loader, Tern plugin, launch commands), org words in this repo and every pass reference. A ✗ offers to go back to that step. |
+| 13 | Finish | Lists your agents with their launch commands and offers to start the **Main session**: `omp` in this folder. |
 
 **Resume:** progress is saved after each step. If you stop (Ctrl+C), close the terminal or a step fails, the next `./setup` offers *Resume at &lt;step&gt;*. On a finished workspace it offers *Change one step*, *Go through all steps again* (keeps everything set up) or *Launch the Main session*.
 
@@ -60,7 +61,7 @@ Agents for the imported projects are set up in the next steps, as usual.
 ## After setup
 
 - **Main session:** run `omp` in this folder. It follows the workflow rules in [`AGENTS.md`](AGENTS.md).
-- **A project agent:** run the `launch.omp` command from `agents/<org>/<project>/<role>/agent.yml`. With another agent, open it in the agent's `cwd` and give it `role.md` as the first message.
+- **A project agent:** with delegation on, ask the Main session to delegate (see [Delegation](#delegation)). Or run the `launch.omp` command from `agents/<org>/<project>/<role>/agent.yml`; with another agent, open it in the agent's `cwd` and give it `role.md` as the first message.
 - **Keep it healthy:** `./setup verify` after changes; `./setup` to add a project or agent; `git pull` for tool updates (dependencies refresh on the next run).
 
 ## Secrets
@@ -79,6 +80,7 @@ Without pass (or before `pass init <gpg-id>`), the wizard warns on every run and
 | `./setup project add <org>/<project>` | Sets up the project's repos in `projects/<org>/<name>/`: clones each one, or creates an empty folder for a repo without a url; existing folders are left as they are |
 | `./setup role add <org>/<project> <role>` | Resolves the role (core → org → project) and writes the agent to `agents/<org>/<project>/<role>/`: `role.md` (context, rules, instructions), `overlay.yml` (tool approvals and MCP isolation for omp), `agent.yml` (launch command and model) |
 | `./setup vault find` / `use <path>` / `new <path>` | Uses an existing notes vault, or creates one with the default structure |
+| `./setup delegation on` / `off` / `show` | Lets Main hand work to project agents (adds the delegation extension to every agent launch); `show` lists the checks |
 | `./setup routing show` / `set <role> <provider/model>…` / `limits <short%> <week%>` / `off` | Shows your providers' usage; sets the models per omp model role for usage-based routing (regenerates the agents) |
 | `./setup verify` | Checks everything on disk, including pass references |
 
@@ -96,6 +98,23 @@ A role is defined in **core**, can be specialised by your **org** (`orgs/<org>/r
 Set `models:` in `workspace.yml` to pick other models per tier.
 
 On omp, denied and prompted tools are enforced by the generated `overlay.yml` (a read-only role also denies edit, write and ast_edit). The overlay also stops the agent from loading the repo's own MCP config (`.mcp.json` and the like), which the org's MCP lists do not cover; agents get only your user-level MCP servers. Must-not rules, read-only paths and MCP lists are written into `role.md` as instructions. On other agents, everything is instructions.
+
+## Delegation
+
+The Main session hands a bounded task to a project agent and gets the result back in the same conversation, with evidence for every acceptance criterion.
+
+| From Main | Does |
+|---|---|
+| `delegate_project(project, role?, objective, criteria, mustNot, …)` | Waits for the result. Without `role`, goes to `dev` |
+| `ask_project(project, role?, question)` | Answer only, no edits; without `role`, goes to `support` |
+| `dispatch_project(…)` | Fire and forget; `/delegations` lists results later |
+| `/delegate <project>[:<role>] …`, `/ask`, `/dispatch`, `/projects`, `/delegations` | The same as commands |
+
+- **On screen (Tern):** Main stays on the left. Each agent opens as a split on the right, stacked top to bottom, and Main keeps focus. When it finishes it is parked and keeps its conversation; the next task for the same role goes to it. Clicking Tern's notification that an agent finished opens it again; it stays open until its next task.
+- **Questions and approvals:** an agent asks through `request_decision`, answered in a dialog in Main; tool approvals show in the agent's split.
+- **Roles still apply:** agents start with their own `role.md` and `overlay.yml`. A second writing role on the same checkout waits in the queue; read-only roles run alongside. Only Main marks a criterion met; the agent's result is cross-checked against its transcript and mismatches come back as warnings.
+
+**Turning it on.** The wizard's Delegation step (on by default when omp and Tern are found), or `./setup delegation on`, sets `delegation: on` in `workspace.yml` and adds the delegation extension (`core/adapters/agent/omp/delegation/`, loaded with `omp -e`) to every agent launch, including agents added or imported later. Main loads it from `.omp/extensions/delegation.ts` when `omp` starts in this folder. The Tern plugin (`core/adapters/terminal/tern/delegation/`) is linked once with `tern plugin link <core>/adapters/terminal/tern/delegation`; the wizard shows the command and asks first. Nothing is written into `~/.omp`. Runtime files live in `~/.agent-workspace/` (`delegation/` mailbox, `sessions/` per agent). `./setup verify` checks the loader, the plugin, every launch command and the runtime folder.
 
 ## Model routing
 
@@ -126,9 +145,11 @@ Share its URL with your team; each engineer adds it in the wizard's Organisation
 setup                   entry point
 AGENTS.md               workflow rules every agent here follows
 docs/index.html         the user guide
+.omp/extensions/        the Main session's delegation loader (omp loads it when started in this folder)
 core/
   workflow/roles/       core roles: dev, support, reviewer, ops
   adapters/agent/       how generated agents run on omp (overlays, usage router) or any other agent
+  adapters/terminal/    the Tern plugin that opens and places delegated agents
   templates/org/        start your org repo from this
   templates/notes/      default notes vault structure
   templates/workspace.example.yml
@@ -144,7 +165,7 @@ workspace.yml (gitignored) your choices and the wizard's progress
 
 ## Status
 
-Early. Works today: the setup wizard with resume, org/project/role/vault/routing commands, role resolution with tighten-only checks, MCP import with pass, usage-based routing. Planned: delegation between the Main session and project agents, Tern split panes, org skills, more agent adapters.
+Early. Works today: the setup wizard with resume, org/project/role/vault/routing/delegation commands, role resolution with tighten-only checks, MCP import with pass, usage-based routing. New and not yet run end to end in a live session: delegation between the Main session and project agents. Planned: org skills, more agent adapters.
 
 ## Develop
 
