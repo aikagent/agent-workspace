@@ -13,6 +13,8 @@ export interface Workspace {
   notes?: { kind: "none" | "vault"; path?: string; folders?: Record<string, string> };
   /** Usage-based model routing for project agents (omp). Absent = off: agents use the engineer's own omp setup. */
   routing?: Routing;
+  /** Main→project-agent delegation: agents launch with the delegation extension. Absent = off. */
+  delegation?: "on" | "off" | boolean;
   /** Wizard progress (see progress.ts); ./setup subcommands never change it. */
   setup?: { done: string[]; finished: boolean };
 }
@@ -41,7 +43,7 @@ const OMP_TIER_ROLE: Record<string, string> = { default: "@default", task: "@tas
 
 const yaml = (file: string): unknown => Bun.YAML.parse(readFileSync(file, "utf8"));
 const writeYaml = (file: string, value: unknown) => writeFileSync(file, Bun.YAML.stringify(value, null, 2));
-const shq = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
+export const shq = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
 
 function checkId(kind: string, value: string): string {
   if (!ID.test(value)) throw new Error(`${kind} "${value}": must be lowercase letters, digits and dashes`);
@@ -183,6 +185,12 @@ function renderRoleMd(context: string, role: ResolvedRole): string {
   ].join("\n");
 }
 
+/** True only for `delegation: on` (or true); absent, "off" and false are off. */
+export const delegationEnabled = (ws: Workspace): boolean => ws.delegation === "on" || ws.delegation === true;
+
+/** The omp extension that lets a project agent answer Main's delegations. */
+export const delegationExtension = (core: string): string => join(core, "adapters", "agent", "omp", "delegation", "index.ts");
+
 /** Resolves a role for an org project and writes the generated agent under agents/<org>/<project>/<role>/. */
 export function roleAdd(root: string, core: string, ref: string, roleId: string): ResolvedRole {
   const { org, project } = parseRef(ref);
@@ -243,6 +251,7 @@ export function roleAdd(root: string, core: string, ref: string, roleId: string)
     ...(routing ? [`AGENT_WORKSPACE_ROUTING=${shq(routingFile)}`] : []),
     `omp --cwd ${shq(cwd)} --append-system-prompt ${shq(join(dir, "role.md"))} --config ${shq(join(dir, "overlay.yml"))}`,
     ...(routing ? [`-e ${shq(join(core, "adapters", "agent", "omp", "usage-router", "index.ts"))}`] : []),
+    ...(delegationEnabled(loadWorkspace(root)) ? [`-e ${shq(delegationExtension(core))}`] : []),
     ...(model ? [`--model ${shq(model)}`] : []),
   ].join(" ");
   const { instructions: _instructions, ...definition } = role;

@@ -1,6 +1,6 @@
 import { loadWorkspace, saveWorkspace } from "./workspace";
 
-export const STEPS = ["tools", "signin", "org", "import", "projects", "roles", "context", "mcp", "routing", "vault", "verify", "finish"] as const;
+export const STEPS = ["tools", "signin", "org", "import", "projects", "roles", "context", "mcp", "routing", "delegation", "vault", "verify", "finish"] as const;
 export type Step = (typeof STEPS)[number];
 
 /** Wizard progress in workspace.yml `setup`: step ids done (plus context:<org>/<project> items), and whether Finish was reached. */

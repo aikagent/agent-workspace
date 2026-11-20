@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * agent-workspace setup.
- *   ./setup                          the setup wizard: tools, sign-in, org, import, projects, agents, context, MCP, routing, vault, verify;
+ *   ./setup                          the setup wizard: tools, sign-in, org, import, projects, agents, context, MCP, routing, delegation, vault, verify;
  *                                    resumes where it stopped and ends by offering the Main session (omp in this folder)
  *   ./setup check                    show which tools are installed
  *   ./setup org add <git-url>        clone an org repo into orgs/<id>
@@ -12,12 +12,14 @@
  *   ./setup routing set <role> <provider/model>...   models for an omp model role, in preference order (turns routing on)
  *   ./setup routing limits <short%> <week%>          percent used at which a provider is skipped (default 95 80)
  *   ./setup routing off              agents go back to your own omp setup
+ *   ./setup delegation on|off|show   Main can hand work to project agents (turns the delegation extension on in every agent launch)
  *   ./setup verify                   check the workspace on disk
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { spawnRunner, usage, usageLines } from "./src/omp";
+import { delegationChecks, delegationOff, delegationOn, ternLinkCommand } from "./src/delegation";
 import { passChecks } from "./src/pass";
 import { runWizard } from "./src/tui";
 import { findVaults, loadWorkspace, newVault, orgAdd, projectAdd, roleAdd, routingLimits, routingOff, routingSet, useVault, verify } from "./src/workspace";
@@ -40,7 +42,7 @@ function print(value: unknown): void {
 
 async function main(args: string[]): Promise<void> {
   const [cmd, sub, a, b] = args;
-  switch (`${cmd ?? ""} ${["org", "project", "role", "vault", "routing"].includes(cmd ?? "") ? sub ?? "" : ""}`.trim()) {
+  switch (`${cmd ?? ""} ${["org", "project", "role", "vault", "routing", "delegation"].includes(cmd ?? "") ? sub ?? "" : ""}`.trim()) {
     case "":
       return runWizard({ root: ROOT, core: CORE, callerCwd: CALLER_CWD, home: homedir(), run: spawnRunner });
     case "check":
@@ -54,6 +56,14 @@ async function main(args: string[]): Promise<void> {
     case "routing off":
       routingOff(ROOT, CORE);
       return print("routing off");
+    case "delegation on":
+      delegationOn(ROOT, CORE);
+      return print(`delegation on; link the Tern plugin once: ${ternLinkCommand(CORE)}`);
+    case "delegation off":
+      delegationOff(ROOT, CORE);
+      return print("delegation off");
+    case "delegation show":
+      return print(delegationChecks(ROOT, CORE, homedir(), spawnRunner).map((c) => `${c.ok ? "✓" : "✗"} ${c.check}${c.detail && !c.ok ? ` — ${c.detail}` : ""}`).join("\n"));
     case "org add":
       return print(`added org ${orgAdd(ROOT, need(a, "git-url"), CORE)}`);
     case "project add": {
@@ -71,7 +81,7 @@ async function main(args: string[]): Promise<void> {
     case "vault new":
       return print(newVault(ROOT, need(a, "path"), CORE, CALLER_CWD));
     case "verify": {
-      const checks = [...verify(ROOT), ...passChecks(homedir(), process.env)];
+      const checks = [...verify(ROOT), ...delegationChecks(ROOT, CORE, homedir(), spawnRunner), ...passChecks(homedir(), process.env)];
       for (const c of checks) console.log(`${c.ok ? "✓" : "✗"} ${c.check}${c.detail && !c.ok ? ` — ${c.detail}` : ""}`);
       if (checks.some((c) => !c.ok)) process.exitCode = 1;
       return;

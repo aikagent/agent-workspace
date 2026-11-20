@@ -1,0 +1,7 @@
+schema = 1
+id = "omp-delegation"
+name = "omp delegation"
+version = "0.1.0"
+description = "Runs resident omp project agents in a column beside the Main omp session."
+icon = "sparkle"
+window = "window.luau"
