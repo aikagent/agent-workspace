@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { runtimeDir } from "../../../adapters/agent/omp/delegation/src/config";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { newDelegationId } from "../../../adapters/agent/omp/delegation/src/ids";
@@ -132,5 +133,31 @@ describe("permissions", () => {
     for (const d of ["ws", "ws/delegation", "ws/delegation/requests"]) {
       expect(statSync(join(root, d)).mode & 0o777).toBe(0o700);
     }
+  });
+});
+
+describe("runtime directories under HOME", () => {
+  const modeOf = (p: string) => statSync(p).mode & 0o777;
+  const six = ["requests", "claims", "events", "responses", "status", "active"];
+
+  test("ensure creates ~/.agent-workspace, delegation/, its six subdirs and sessions/ privately", () => {
+    const home = mkdtempSync(join(realpathSync(tmpdir()), "dlg-home-"));
+    new Mailbox(runtimeDir({ HOME: home })).ensure();
+    const base = join(home, ".agent-workspace");
+    for (const d of [base, join(base, "delegation"), join(base, "sessions"), ...six.map((s) => join(base, "delegation", s))]) {
+      expect(modeOf(d)).toBe(0o700);
+    }
+  });
+
+  test("existing looser dirs owned by the user are tightened to 0700", () => {
+    const home = mkdtempSync(join(realpathSync(tmpdir()), "dlg-home-"));
+    const base = join(home, ".agent-workspace");
+    const dirs = [base, join(base, "delegation"), join(base, "sessions"), join(base, "delegation", "requests")];
+    for (const d of dirs) {
+      mkdirSync(d, { recursive: true });
+      chmodSync(d, 0o755);
+    }
+    new Mailbox(runtimeDir({ HOME: home })).ensure();
+    for (const d of dirs) expect(modeOf(d)).toBe(0o700);
   });
 });

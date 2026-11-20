@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { isDelegationId } from "./ids";
 import type { DecisionRequestEvent, DelegationEvent, DelegationRequest, DelegationResponse } from "./protocol";
 
@@ -28,9 +28,17 @@ export function readJson<T>(file: string, max = MAX_BYTES): T | undefined {
 export class Mailbox {
   constructor(readonly root: string) {}
 
-  /** Creates the root and every missing parent privately (0700): requests carry handoffs and transcripts. */
+  /**
+   * Owns the runtime directories (the Tern plugin cannot set modes): the parent of the root (`~/.agent-workspace`),
+   * the root, its mailbox subdirs and the sibling `sessions/`, all 0700. Looser ones owned by this user are tightened.
+   */
   ensure(): void {
-    for (const d of DIRS) mkdirSync(join(this.root, d), { recursive: true, mode: 0o700 });
+    const dirs = [dirname(this.root), this.root, join(dirname(this.root), "sessions"), ...DIRS.map((d) => join(this.root, d))];
+    for (const d of dirs) {
+      mkdirSync(d, { recursive: true, mode: 0o700 });
+      const s = statSync(d);
+      if (s.uid === process.getuid?.() && (s.mode & 0o777) !== 0o700) chmodSync(d, 0o700);
+    }
   }
 
   private file(dir: string, name: string): string {

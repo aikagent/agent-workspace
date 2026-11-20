@@ -130,11 +130,20 @@ local function saveColumn(mainPane: number, col: { number })
 	tern.kv.set("column:" .. mainPane, tern.json.array(col))
 end
 
-local function hide(cx: any, panes: { [number]: any }, mainPane: number, pane: number)
-	cx.layout:park(pane)
-	if panes[pane] then
-		panes[pane].parked = true
+-- Parks that must be verified on the next ticks: pane -> { attempts, reason }.
+local PARK_ATTEMPTS = 6
+local pendingPark = {}
+
+local function tryPark(cx: any, pane: number, attempts: number)
+	local ok, reason = cx.layout:park(pane)
+	if not ok then
+		tern.log.warn("omp-delegation: park of pane " .. tostring(pane) .. " refused: " .. tostring(reason))
 	end
+	pendingPark[pane] = { attempts = attempts, reason = if ok then nil else tostring(reason) }
+end
+
+local function hide(cx: any, panes: { [number]: any }, mainPane: number, pane: number)
+	tryPark(cx, pane, 1)
 	local kept = {}
 	for _, x in column(panes, mainPane) do
 		if x ~= pane then
@@ -169,13 +178,11 @@ local function show(cx: any, panes: { [number]: any }, mainPane: number, pane: n
 	local info = panes[pane]
 	if spot.kind == "park" then
 		if not (info and info.parked) then
-			cx.layout:park(pane)
-			if info then
-				info.parked = true
-			end
+			tryPark(cx, pane, 1)
 		end
 		return false
 	end
+	pendingPark[pane] = nil
 	if info and info.parked then
 		cx.layout:unpark(pane, { focus = false })
 		info.parked = false
@@ -398,8 +405,10 @@ local function deliverQueued(cx: any, panes: { [number]: any }, agents: { [numbe
 end
 
 local function tick(cx: any)
-	for _, d in { "requests", "claims", "events", "responses", "status", "active" } do
-		tern.fs.mkdir(p(ROOT, d))
+	-- The extension creates the runtime folders (with their permissions) when it writes a request; tern.fs.mkdir
+	-- takes no mode and would create the parents too, so the plugin only works inside what exists.
+	if not tern.fs.exists(p(ROOT, "requests")) or not tern.fs.exists(p(ROOT, "active")) then
+		return
 	end
 	local panes = {}
 	for _, info in cx.session:panes() do
@@ -411,6 +420,19 @@ local function tick(cx: any)
 		agentCount += 1
 	end
 	local reap = policy.canReap(tern.now(), LOADED_AT, agentCount)
+	-- A park that did not take is repeated for a few ticks, then reported with Tern's reason.
+	for pane, pending in pendingPark do
+		local verdict = policy.parkCheck(panes[pane], pending.attempts, PARK_ATTEMPTS)
+		if verdict == "done" then
+			pendingPark[pane] = nil
+		elseif verdict == "retry" then
+			tryPark(cx, pane, pending.attempts + 1)
+		else
+			pendingPark[pane] = nil
+			tern.log.warn("omp-delegation: pane " .. tostring(pane) .. " is still shown after " .. PARK_ATTEMPTS .. " park attempts")
+			cx:toast("error", "omp delegation: could not park an agent", pending.reason or "the pane stayed in its tab")
+		end
+	end
 	claimNew(panes)
 	for _, name in tern.fs.list(p(ROOT, "active")) do
 		if string.match(name, "%.json$") then

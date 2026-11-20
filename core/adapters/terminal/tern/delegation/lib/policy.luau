@@ -96,6 +96,14 @@ function policy.isStale(act: { pane: number? }, agents: { [number]: any }): bool
 	return act.pane == nil or agents[act.pane] == nil
 end
 
+-- After a park: "done" when the pane is parked or gone, else "retry" until `max` attempts, then "giveup".
+function policy.parkCheck(info: { parked: boolean? }?, attempts: number, max: number): string
+	if info == nil or info.parked == true then
+		return "done"
+	end
+	return if attempts >= max then "giveup" else "retry"
+end
+
 -- Stale files are reaped only once the agent list can be trusted: it has agents, or REAP_GRACE_MS
 -- passed since load (a briefly empty list right after Tern starts must not kill live delegations).
 local REAP_GRACE_MS = 5000

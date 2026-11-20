@@ -9,7 +9,7 @@ export function workspaceRoot(env = process.env, here = import.meta.dir): string
 
 /** AGENT_WORKSPACE_DELEGATION_DIR exists for tests only; real runs always use ~/.agent-workspace/delegation. */
 export function runtimeDir(env = process.env): string {
-  return env.AGENT_WORKSPACE_DELEGATION_DIR ?? join(homedir(), ".agent-workspace", "delegation");
+  return env.AGENT_WORKSPACE_DELEGATION_DIR ?? join(env.HOME ?? homedir(), ".agent-workspace", "delegation");
 }
 
 /** The one place that reads the flag: the string "on" or boolean true (YAML 1.1 readers turn a bare `on` into true). */

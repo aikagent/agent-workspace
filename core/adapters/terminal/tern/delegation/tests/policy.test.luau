@@ -80,6 +80,13 @@ check("an active file whose agent pane is gone is stale", policy.isStale({ pane 
 check("an active file without a pane is stale", policy.isStale({}, live))
 check("an active file with a live agent pane is not stale", not policy.isStale({ pane = 9 }, live))
 
+-- a park that did not take is retried a few ticks, then reported
+check("a parked pane needs no retry", policy.parkCheck({ parked = true }, 1, 6) == "done")
+check("a pane that is gone needs no retry", policy.parkCheck(nil, 1, 6) == "done")
+check("a pane still in its tab is parked again", policy.parkCheck({ parked = false }, 1, 6) == "retry")
+check("a pane with no parked flag counts as shown", policy.parkCheck({}, 5, 6) == "retry")
+check("a pane still shown after the last attempt is reported", policy.parkCheck({ parked = false }, 6, 6) == "giveup")
+
 -- reaping stale files waits for a populated agent list or 5 s after load
 check("no reaping right after load while the agent list is empty", not policy.canReap(1000, 0, 0))
 check("no reaping 4.9 s after load while the list is empty", not policy.canReap(4900, 0, 0))
