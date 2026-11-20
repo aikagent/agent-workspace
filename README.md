@@ -1,6 +1,6 @@
 # agent-workspace
 
-Clone this repo, run `./setup`, and get an AI-assisted engineering workflow for the projects you work on: one agent per project and role, each with your team's rules, the project's context and only the tools its role allows. A terminal wizard sets everything up; you never chat with an agent during setup.
+Clone this repo, run `./setup`, and get an AI-assisted engineering workflow for the projects you work on: one agent per project and role, each with your team's rules, the project's context and only the tools its role allows. A terminal wizard sets everything up.
 
 This repo holds **only structure and the generic workflow**. Your team's data lives in its own private org repo; your personal choices stay on your machine. Nothing is shared back.
 
