@@ -15,10 +15,11 @@ export function markDone(root: string, item: string): void {
   saveWorkspace(root, { ...ws, setup: { done: p.done.includes(item) ? p.done : [...p.done, item], finished: p.finished || item === "finish" } });
 }
 
-/** First step after the always-run checks (tools, signin) that is not done yet. */
+/** First step after the always-run checks (tools, signin) that is not done yet; none once Finish was reached. */
 export function nextStep(root: string): Step | undefined {
-  const { done } = loadProgress(root);
-  return STEPS.slice(2).find((s) => !done.includes(s));
+  const { done, finished } = loadProgress(root);
+  // A workspace finished before a newer step existed stays finished; the new step is one "Change one step" away.
+  return finished ? undefined : STEPS.slice(2).find((s) => !done.includes(s));
 }
 
 /** Clears the progress so every screen runs again; everything set up stays. */

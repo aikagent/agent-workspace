@@ -88,14 +88,22 @@ async function importScreen(ctx: Ctx): Promise<void> {
       },
     }),
   );
-  const src = realpathSync(pathOrUrl(typed, ctx));
+  const typedPath = pathOrUrl(typed, ctx);
+  const src = realpathSync(typedPath);
   const root = realpathSync(ctx.root);
   if (inside(src, root)) throw new Error(`${src} is inside this workspace; pick the folder you work in today`);
   const org = ws.orgs.length === 1 ? ws.orgs[0].id : (answer(await p.select({ message: "Import into which organisation?", options: ws.orgs.map((o) => ({ value: o.id, label: o.id })) })) as string);
   const orgDir = join(ctx.root, "orgs", org);
 
-  // The workspace itself may live in the source folder: never copy it into itself.
-  const entries = scanSource(src, readOrgProjects(orgDir)).filter((e) => !inside(root, e.path));
+  // Never copy the workspace into itself, also through a symlinked entry; broken links have nothing to copy.
+  const found = scanSource(src, readOrgProjects(orgDir));
+  const broken = found.filter((e) => !existsSync(e.path));
+  if (broken.length) p.log.warn(`Broken links left out: ${broken.map((e) => e.name).join(", ")}`);
+  const entries = found.filter((e) => {
+    if (!existsSync(e.path)) return false;
+    const real = realpathSync(e.path);
+    return !inside(root, real) && !inside(real, root);
+  });
   if (!entries.length) return p.log.info(`${src} is empty.`);
   const what = (e: Entry) =>
     e.worktreeOf ? `worktree of ${e.worktreeOf}` : e.kind === "data" ? "data" : e.projectId ? `project → ${org}/${e.projectId}` : "project (new)";
@@ -126,24 +134,36 @@ async function importScreen(ctx: Ctx): Promise<void> {
     ...entries.filter((e) => asData.includes(e.name)).map((e) => ({ ...e, kind: "data" as const, worktreeOf: undefined })),
   ];
   if (!chosen.length) return;
+  const orphans = chosen.filter((e) => e.kind === "project" && e.worktreeOf && !asProjects.includes(e.worktreeOf));
+  if (orphans.length) {
+    p.log.warn(`${orphans.map((e) => e.name).join(", ")}: git worktree of a repo you are not importing; its copy will be disconnected from git (.git → .git.copied) so it cannot change the original.`);
+  }
   if (!answer(await p.confirm({ message: `Copy ${asProjects.length} projects and ${asData.length} data entries from ${src.replace(ctx.home, "~")}? Nothing there is changed.` }))) return;
 
   p.log.step("Copying (large folders can take a few minutes)…");
-  const report = runImport({ root: ctx.root, org, src, home: ctx.home, run: ctx.run }, chosen, (name) => markDone(ctx.root, `import:${name}`));
+  const srcAliases = typedPath === src ? [] : [typedPath];
+  const report = runImport({ root: ctx.root, org, src, srcAliases, home: ctx.home, run: ctx.run }, chosen, () => {});
   const short = (f: string) => f.replace(`${ctx.root}/`, "");
-  p.log.success(`Copied ${report.copied.length} (${chosen.length - report.copied.length} were already here). Git worktree links re-pointed: ${report.worktrees.fixed}.`);
-  if (report.newProjects.length) {
-    p.note(report.newProjects.map(short).join("\n"), "New projects in your org checkout: commit them to the org repo through its review");
-  }
+  p.log.success(`Copied ${report.copied.length} (${chosen.length - report.copied.length} were already here). Git worktree links re-pointed: ${report.worktrees.fixed}; symlinks re-pointed: ${report.links.fixed}.`);
+  const list = (items: string[], title: string) => items.length && p.note(items.map(short).join("\n"), title);
+  list(report.newProjects, "New projects in your org checkout: commit them to the org repo through its review");
   if (report.paths.rewritten.length) p.log.info(`Local config files re-pointed to the copies: ${report.paths.rewritten.length}`);
-  if (report.paths.tracked.length) {
-    p.note(report.paths.tracked.map(short).join("\n"), "Tracked files still naming the old folder (left as they are; change them in the repo if needed)");
-  }
-  if (report.worktrees.outside.length) p.note(report.worktrees.outside.map(short).join("\n"), "Worktree links to folders that were not imported");
+  list(report.paths.tracked, "Tracked files still naming the old folder (left as they are; change them in the repo if needed)");
+  list(report.paths.stillNaming, "Local files still naming the old folder (paths into entries you did not import)");
+  list(report.worktrees.disconnected, "Disconnected from git (their repository was not imported): .git renamed to .git.copied");
+  list(report.worktrees.outside, "Worktree records for folders that were not imported (inside the copies' own .git, harmless)");
+  list(report.links.outside, "Symlinks still pointing into the old folder (their target was not imported)");
   for (const v of report.venvs) {
-    const say = { rebuilt: "rebuilt", failed: "rebuild failed; the old one is kept as .copied", renamed: "no uv.lock or requirements.txt: kept as .copied, recreate it", kept: "left as is" };
-    p.log.info(`Python environment ${short(v.venv)}: ${say[v.result as keyof typeof say]}`);
+    const say = {
+      rebuilt: "rebuilt",
+      failed: "rebuild failed; the old one is kept as .copied",
+      renamed: "no uv.lock or requirements.txt: kept as .copied, recreate it",
+      kept: "left as is",
+      "names-source": "its requirements still name the old folder: kept as .copied, fix them and recreate it",
+    };
+    p.log.info(`Python environment ${short(v.venv)}: ${say[v.result]}`);
   }
+  for (const f of report.failed) p.log.warn(`${f.ref}: ${f.error}. Retry with ./setup project add ${f.ref}`);
 }
 
 /** Runs one screen; marks the step done only when it completes. A failure offers a retry or pauses the setup. */

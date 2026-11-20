@@ -43,6 +43,11 @@ describe("progress", () => {
     expect(loadWorkspace(root).orgs).toEqual([{ id: "acme", url: "u" }]);
   });
 
+  test("a workspace finished before a new step was added stays finished", () => {
+    for (const s of ["org", "projects", "roles", "finish"]) markDone(root, s);
+    expect(nextStep(root)).toBeUndefined();
+  });
+
   test("workspace commands keep the progress", () => {
     markDone(root, "org");
     const ws = loadWorkspace(root);

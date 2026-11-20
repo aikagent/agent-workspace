@@ -41,11 +41,11 @@ cd agent-workspace
 
 Switching from a folder you already work in (say `~/Code`)? The wizard's Import step brings it over without touching it:
 - **Copies only.** Nothing in the source folder is written, moved or deleted. On macOS the copies are APFS clones (instant, no extra disk until a file changes); on Linux, `cp --reflink=auto`.
-- **Projects** go to `projects/<org>/<project>/<repo>`; a folder the org doesn't know yet becomes a new project in your local org checkout (commit it to the org repo through its review). Git worktrees living next to a repo go next to its copy. **Data** (backups, loose files) goes to `data/`, which git ignores.
-- **Uncommitted work and worktrees come along.** Worktree links are re-pointed so no copy shares a repository with the original.
-- **Paths:** source paths in local config files the copies' git doesn't track (`.env`, `settings.local.json`, …) are rewritten to the copies; tracked files are listed, not changed.
-- **Python environments** in the copies are rebuilt with uv (the copied one is kept as `<name>.copied`), so installing in a copy never changes the original.
-- **Re-runnable:** a resumed or repeated import copies only what's missing. It needs an organisation repo.
+- **Projects** go to `projects/<org>/<project>/<repo>`; a checkout matched by git remote goes into that repo's folder, and the project's other repos are cloned as usual. A folder the org doesn't know yet becomes a new project in your local org checkout (commit it to the org repo through its review). Git worktrees living next to a repo go next to its copy. **Data** (backups, loose files) goes to `data/`, which git ignores. Two entries that would land in the same folder are refused.
+- **Uncommitted work and worktrees come along.** Worktree links are re-pointed so no copy shares a repository with the original; a worktree whose repository you don't import is disconnected (`.git` → `.git.copied`). Absolute symlinks into the source are re-pointed too, and a symlinked entry is copied as a real folder.
+- **Paths:** source paths (as typed and resolved) in local config files the copies' git doesn't track (`.env`, `settings.local.json`, `requirements.txt`, …) are rewritten to the copies; tracked files, and files still naming entries you left out, are listed.
+- **Python environments** in the copies are rebuilt with uv (the copied one is kept as `<name>.copied`), so installing in a copy never changes the original. An environment whose requirements still name the source is left for you to recreate.
+- **Re-runnable:** a resumed or repeated import copies only what's missing and finishes the fixes for copies an interrupted run made. It needs an organisation repo.
 
 Agents for the imported projects are set up in the next steps, as usual.
 
