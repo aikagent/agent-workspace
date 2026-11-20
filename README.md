@@ -4,7 +4,7 @@ Clone this repo, run `./setup`, and get an AI-assisted engineering workflow for 
 
 This repo holds **only structure and the generic workflow**. Your team's data lives in its own private org repo; your personal choices stay on your machine. Nothing is shared back.
 
-**User guide:** [`docs/index.html`](docs/index.html), a one-page illustrated guide (download it or open it from a clone).
+**User guide:** https://aikagent.github.io/agent-workspace/ (source: [`docs/index.html`](docs/index.html)).
 
 ## Quick start
 
