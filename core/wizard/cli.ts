@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * agent-workspace setup.
- *   ./setup                          the setup wizard: tools, sign-in, org, projects, agents, context, MCP, routing, vault, verify;
+ *   ./setup                          the setup wizard: tools, sign-in, org, import, projects, agents, context, MCP, routing, vault, verify;
  *                                    resumes where it stopped and ends by offering the Main session (omp in this folder)
  *   ./setup check                    show which tools are installed
  *   ./setup org add <git-url>        clone an org repo into orgs/<id>

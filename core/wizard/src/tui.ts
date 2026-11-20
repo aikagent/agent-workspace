@@ -1,10 +1,11 @@
 /**
- * The ./setup wizard. Screens only: every change goes through the tested functions in workspace.ts, omp.ts, mcp.ts
- * and progress.ts. Progress is saved after each step, so an interrupted setup resumes where it stopped.
+ * The ./setup wizard. Screens only: every change goes through the tested functions in workspace.ts, omp.ts, mcp.ts,
+ * importer.ts and progress.ts. Progress is saved after each step, so an interrupted setup resumes where it stopped.
  */
 import * as p from "@clack/prompts";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
+import { readOrgProjects, runImport, scanSource, type Entry } from "./importer";
 import { addToOmp, scanServers, toOmp } from "./mcp";
 import { CONTEXT_PROMPT, catalog, draft, hasOwnRouting, login, modelRoles, proposeRouting, smoke, usage, usageLines, type Runner } from "./omp";
 import { passChecks, passStore } from "./pass";
@@ -63,6 +64,106 @@ function pathOrUrl(input: string, ctx: Ctx): string {
   if (v.includes("://") || /^[\w.-]+@[\w.-]+:/.test(v)) return v;
   const expanded = v === "~" ? ctx.home : v.startsWith("~/") ? join(ctx.home, v.slice(2)) : v;
   return resolve(ctx.callerCwd, expanded);
+}
+
+/** Steps a user can return to: everything between the always-run checks and the summary. */
+const EDITABLE: Step[] = STEPS.slice(STEPS.indexOf("org"), STEPS.indexOf("finish"));
+
+const inside = (child: string, parent: string) => {
+  const rel = relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"));
+};
+
+async function importScreen(ctx: Ctx): Promise<void> {
+  const ws = loadWorkspace(ctx.root);
+  if (!ws.orgs.length) return p.log.info("Importing needs an organisation repo; skipped. Add one, then run ./setup and pick this step.");
+  if (!answer(await p.confirm({ message: "Do you have an existing folder of projects to import? (it is copied; the folder itself is never changed)", initialValue: false }))) return;
+  const typed = answer(
+    await p.text({
+      message: "Folder with your projects",
+      placeholder: "e.g. ~/Code",
+      validate: (v) => {
+        const full = v?.trim() ? pathOrUrl(v, ctx) : "";
+        return full && existsSync(full) && statSync(full).isDirectory() ? undefined : "Not a folder";
+      },
+    }),
+  );
+  const typedPath = pathOrUrl(typed, ctx);
+  const src = realpathSync(typedPath);
+  const root = realpathSync(ctx.root);
+  if (inside(src, root)) throw new Error(`${src} is inside this workspace; pick the folder you work in today`);
+  const org = ws.orgs.length === 1 ? ws.orgs[0].id : (answer(await p.select({ message: "Import into which organisation?", options: ws.orgs.map((o) => ({ value: o.id, label: o.id })) })) as string);
+  const orgDir = join(ctx.root, "orgs", org);
+
+  // Never copy the workspace into itself, also through a symlinked entry; broken links have nothing to copy.
+  const found = scanSource(src, readOrgProjects(orgDir));
+  const broken = found.filter((e) => !existsSync(e.path));
+  if (broken.length) p.log.warn(`Broken links left out: ${broken.map((e) => e.name).join(", ")}`);
+  const entries = found.filter((e) => {
+    if (!existsSync(e.path)) return false;
+    const real = realpathSync(e.path);
+    return !inside(root, real) && !inside(real, root);
+  });
+  if (!entries.length) return p.log.info(`${src} is empty.`);
+  const what = (e: Entry) =>
+    e.worktreeOf ? `worktree of ${e.worktreeOf}` : e.kind === "data" ? "data" : e.projectId ? `project → ${org}/${e.projectId}` : "project (new)";
+  p.note(entries.map((e) => `${e.name} · ${what(e)}`).join("\n"), `Found in ${src.replace(ctx.home, "~")}`);
+
+  const dirs = entries.filter((e) => existsSync(e.path) && statSync(e.path).isDirectory());
+  const asProjects = answer(
+    await p.multiselect({
+      message: "Import these as projects (one agent workspace each)",
+      options: dirs.map((e) => ({ value: e.name, label: e.name, hint: what(e) })),
+      initialValues: dirs.filter((e) => e.kind === "project").map((e) => e.name),
+      required: false,
+    }),
+  );
+  const rest = entries.filter((e) => !asProjects.includes(e.name));
+  const asData = rest.length
+    ? answer(
+        await p.multiselect({
+          message: "Copy these to data/ (unticked ones are left out)",
+          options: rest.map((e) => ({ value: e.name, label: e.name })),
+          initialValues: rest.map((e) => e.name),
+          required: false,
+        }),
+      )
+    : [];
+  const chosen: Entry[] = [
+    ...entries.filter((e) => asProjects.includes(e.name)).map((e) => ({ ...e, kind: "project" as const })),
+    ...entries.filter((e) => asData.includes(e.name)).map((e) => ({ ...e, kind: "data" as const, worktreeOf: undefined })),
+  ];
+  if (!chosen.length) return;
+  const orphans = chosen.filter((e) => e.kind === "project" && e.worktreeOf && !asProjects.includes(e.worktreeOf));
+  if (orphans.length) {
+    p.log.warn(`${orphans.map((e) => e.name).join(", ")}: git worktree of a repo you are not importing; its copy will be disconnected from git (.git → .git.copied) so it cannot change the original.`);
+  }
+  if (!answer(await p.confirm({ message: `Copy ${asProjects.length} projects and ${asData.length} data entries from ${src.replace(ctx.home, "~")}? Nothing there is changed.` }))) return;
+
+  p.log.step("Copying (large folders can take a few minutes)…");
+  const srcAliases = typedPath === src ? [] : [typedPath];
+  const report = runImport({ root: ctx.root, org, src, srcAliases, home: ctx.home, run: ctx.run }, chosen, () => {});
+  const short = (f: string) => f.replace(`${ctx.root}/`, "");
+  p.log.success(`Copied ${report.copied.length} (${chosen.length - report.copied.length} were already here). Git worktree links re-pointed: ${report.worktrees.fixed}; symlinks re-pointed: ${report.links.fixed}.`);
+  const list = (items: string[], title: string) => items.length && p.note(items.map(short).join("\n"), title);
+  list(report.newProjects, "New projects in your org checkout: commit them to the org repo through its review");
+  if (report.paths.rewritten.length) p.log.info(`Local config files re-pointed to the copies: ${report.paths.rewritten.length}`);
+  list(report.paths.tracked, "Tracked files still naming the old folder (left as they are; change them in the repo if needed)");
+  list(report.paths.stillNaming, "Local files still naming the old folder (paths into entries you did not import)");
+  list(report.worktrees.disconnected, "Disconnected from git (their repository was not imported): .git renamed to .git.copied");
+  list(report.worktrees.outside, "Worktree records for folders that were not imported (inside the copies' own .git, harmless)");
+  list(report.links.outside, "Symlinks still pointing into the old folder (their target was not imported)");
+  for (const v of report.venvs) {
+    const say = {
+      rebuilt: "rebuilt",
+      failed: "rebuild failed; the old one is kept as .copied",
+      renamed: "no uv.lock or requirements.txt: kept as .copied, recreate it",
+      kept: "left as is",
+      "names-source": "its requirements still name the old folder: kept as .copied, fix them and recreate it",
+    };
+    p.log.info(`Python environment ${short(v.venv)}: ${say[v.result]}`);
+  }
+  for (const f of report.failed) p.log.warn(`${f.ref}: ${f.error}. Retry with ./setup project add ${f.ref}`);
 }
 
 /** Runs one screen; marks the step done only when it completes. A failure offers a retry or pauses the setup. */
@@ -383,7 +484,7 @@ async function verifyScreen(ctx: Ctx): Promise<void> {
     const back = answer(
       await p.select({
         message: "Some checks failed. Go back to a step?",
-        options: [{ value: "continue", label: "Continue anyway" }, ...STEPS.slice(2, 9).map((s) => ({ value: s, label: s }))],
+        options: [{ value: "continue", label: "Continue anyway" }, ...EDITABLE.filter((s) => s !== "verify").map((s) => ({ value: s, label: s }))],
         initialValue: "continue",
       }),
     );
@@ -417,6 +518,7 @@ const SCREENS: Record<Step, (ctx: Ctx) => Promise<void>> = {
   tools,
   signin,
   org,
+  import: importScreen,
   projects,
   roles,
   context,
@@ -481,7 +583,7 @@ export async function runWizard(ctx: Ctx): Promise<void> {
       await walk(ctx, "org");
       return launchMain(ctx);
     }
-    const picked = answer(await p.select({ message: "Which step?", options: STEPS.slice(2, 10).map((s) => ({ value: s, label: s })) }));
+    const picked = answer(await p.select({ message: "Which step?", options: EDITABLE.map((s) => ({ value: s, label: s })) }));
     await step(ctx, picked as Step);
   }
 }

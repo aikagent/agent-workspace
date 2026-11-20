@@ -17,15 +17,17 @@ describe("progress", () => {
     expect(nextStep(root)).toBe("org");
   });
 
-  test("an interrupted run resumes at the first step not done", () => {
-    for (const s of ["tools", "signin", "org", "projects"]) markDone(root, s);
+  test("an interrupted run resumes at the first step not done; import comes right after the organisation", () => {
+    for (const s of ["tools", "signin", "org"]) markDone(root, s);
+    expect(nextStep(root)).toBe("import");
+    for (const s of ["import", "projects"]) markDone(root, s);
     markDone(root, "projects");
-    expect(loadProgress(root).done).toEqual(["tools", "signin", "org", "projects"]);
+    expect(loadProgress(root).done).toEqual(["tools", "signin", "org", "import", "projects"]);
     expect(nextStep(root)).toBe("roles");
   });
 
   test("context items are recorded per project and do not complete the step", () => {
-    for (const s of ["org", "projects", "roles"]) markDone(root, s);
+    for (const s of ["org", "import", "projects", "roles"]) markDone(root, s);
     markDone(root, "context:acme/app");
     expect(loadProgress(root).done).toContain("context:acme/app");
     expect(nextStep(root)).toBe("context");
@@ -33,12 +35,17 @@ describe("progress", () => {
 
   test("reaching finish marks the setup finished; going through again keeps the workspace", () => {
     saveWorkspace(root, { ...loadWorkspace(root), orgs: [{ id: "acme", url: "u" }] });
-    for (const s of ["org", "projects", "roles", "context", "mcp", "routing", "vault", "verify", "finish"]) markDone(root, s);
+    for (const s of ["org", "import", "projects", "roles", "context", "mcp", "routing", "vault", "verify", "finish"]) markDone(root, s);
     expect(loadProgress(root).finished).toBe(true);
     expect(nextStep(root)).toBeUndefined();
     restart(root);
     expect(loadProgress(root)).toEqual({ done: [], finished: false });
     expect(loadWorkspace(root).orgs).toEqual([{ id: "acme", url: "u" }]);
+  });
+
+  test("a workspace finished before a new step was added stays finished", () => {
+    for (const s of ["org", "projects", "roles", "finish"]) markDone(root, s);
+    expect(nextStep(root)).toBeUndefined();
   });
 
   test("workspace commands keep the progress", () => {
