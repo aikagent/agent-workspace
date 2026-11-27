@@ -4,7 +4,6 @@ writes: false
 model: { tier: task }
 tools:
   deny: [edit, write]
-  prompt: [bash]
 mustNot:
   - "no file changes"
   - "only scripts this project documents"

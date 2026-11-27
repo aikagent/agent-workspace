@@ -22,7 +22,7 @@ export function buildHandoff(r: Omit<DelegationRequest, "handoff">): string {
   lines.push(
     r.writes
       ? `Rules: continue from the current files; trust the handoff unless the repository contradicts it; edit only inside the target checkout${readOnly}; run relevant tests; do not commit unless told.`
-      : `Rules: continue from the current files; trust the handoff unless the repository contradicts it; you change no files yourself; run only the commands this task names, each behind the approval prompt${readOnly}.`,
+      : `Rules: continue from the current files; trust the handoff unless the repository contradicts it; you change no files yourself; run only the commands this task names; destructive ones and scripts that change data or running services wait for the engineer's approval${readOnly}.`,
     `To ask the user anything, call request_decision with delegation_id ${r.delegationId}; never end your turn to ask.`,
     `Finish only by calling return_delegation with delegation_id ${r.delegationId}, giving evidence for every criterion and must-not rule.`,
   );

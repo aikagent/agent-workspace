@@ -108,7 +108,7 @@ describe("roleAdd", () => {
     const dir = join(root, "agents", "acme", "example", "support");
     expect(readYaml<Agent>(join(dir, "agent.yml")).cwd).toBe(repoDir);
     expect(readYaml<{ tools: { approval: Record<string, string> } }>(join(dir, "overlay.yml")).tools.approval).toEqual({
-      bash: "prompt",
+      eval: "prompt",
       edit: "deny",
       write: "deny",
       ast_edit: "deny",
@@ -138,6 +138,60 @@ describe("roleAdd", () => {
       const overlay = readYaml<{ mcp?: { enableProjectConfig?: boolean } }>(join(root, "agents", "acme", "example", r, "overlay.yml"));
       expect(overlay.mcp?.enableProjectConfig).toBe(false);
     }
+  });
+
+  // omp's bash.patterns matching: `*` is a wildcard, whitespace runs collapse, the rule covers the whole segment.
+  const prompts = (rules: { match: string; approval: string }[], command: string) =>
+    rules.some(
+      (r) =>
+        r.approval === "prompt" &&
+        new RegExp(`^${r.match.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`).test(command),
+    );
+  const bashRules = (role: string) =>
+    readYaml<{ bash?: { patterns?: { match: string; approval: string }[] } }>(join(root, "agents", "acme", "example", role, "overlay.yml")).bash
+      ?.patterns ?? [];
+
+  test("every agent runs ordinary commands freely but must ask before destructive ones", () => {
+    orgAdd(root, orgRepo("acme"), CORE);
+    projectAdd(root, "acme/example");
+    for (const r of ["dev", "support", "ops", "reviewer"]) {
+      roleAdd(root, CORE, "acme/example", r);
+      const overlay = readYaml<{ tools: { approval: Record<string, string> } }>(join(root, "agents", "acme", "example", r, "overlay.yml"));
+      expect(overlay.tools.approval.bash).toBeUndefined();
+      // eval can start shells the bash patterns never see, so it always asks.
+      expect(overlay.tools.approval.eval).toBe("prompt");
+      const rules = bashRules(r);
+      for (const cmd of [
+        "rm -rf build", "xargs rm -f", "git push origin dev", "git -C repo push -f", "git reset --hard HEAD~1", "git -C repo branch -D x",
+        "git checkout .", "git checkout HEAD -- src/app.ts", "git switch --discard-changes main", "kubectl delete pod x", "kubectl rollout restart deploy/api",
+        "gh pr merge 3", "gh api repos/o/r/issues/1/comments -f body=hi", "gh issue close 4", "gh workflow run deploy.yml", "terraform destroy -auto-approve",
+        "helm un rel", "docker push reg/app:1", "npm publish", "psql -c update users set a = 1", "psql -c drop database app", "redis-cli FLUSHALL",
+        "git commit -am wip", "git -C repo commit -m x",
+      ])
+        expect(prompts(rules, cmd)).toBe(true);
+      for (const cmd of [
+        "git status", "git -C repo log --oneline -5", "git checkout main", "git checkout -b x", "git switch main", "git stash push -m wip",
+        "gh issue view 12", "kubectl rollout status deploy/api", "kubectl get pods -o wide", "helm list", "terraform plan", "pytest -q", "ls -la",
+      ])
+        expect(prompts(rules, cmd)).toBe(false);
+    }
+  });
+
+  test("an org adds its own destructive commands to the core list, which still applies", () => {
+    orgAdd(root, orgRepo("acme", { "destructive-commands.yml": '- "acme-tool deploy*"\n- "rm *"\n' }), CORE);
+    projectAdd(root, "acme/example");
+    roleAdd(root, CORE, "acme/example", "dev");
+    const rules = bashRules("dev");
+    expect(prompts(rules, "acme-tool deploy prod")).toBe(true);
+    expect(prompts(rules, "git push origin dev")).toBe(true);
+    expect(prompts(rules, "acme-tool status")).toBe(false);
+    expect(rules.filter((r) => r.match === "rm *")).toHaveLength(1);
+  });
+
+  test("a malformed org destructive list is refused rather than silently dropped", () => {
+    orgAdd(root, orgRepo("acme", { "destructive-commands.yml": "patterns:\n  - \"acme-tool deploy*\"\n" }), CORE);
+    projectAdd(root, "acme/example");
+    expect(() => roleAdd(root, CORE, "acme/example", "dev")).toThrow("must be a list of command patterns");
   });
 
   test("a read-only role keeps MCP tools callable on omp (xd:// devices go through write)", () => {

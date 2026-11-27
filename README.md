@@ -78,7 +78,7 @@ Without pass (or before `pass init <gpg-id>`), the wizard warns on every run and
 | `./setup check` | Shows which tools are installed |
 | `./setup org add <git-url>` | Clones an org repo into `orgs/<id>/` |
 | `./setup project add <org>/<project>` | Sets up the project's repos in `projects/<org>/<name>/`: clones each one, or creates an empty folder for a repo without a url; existing folders are left as they are |
-| `./setup role add <org>/<project> <role>` | Resolves the role (core → org → project) and writes the agent to `agents/<org>/<project>/<role>/`: `role.md` (context, rules, instructions), `overlay.yml` (tool approvals and MCP isolation for omp), `agent.yml` (launch command and model) |
+| `./setup role add <org>/<project> <role>` | Resolves the role (core → org → project) and writes the agent to `agents/<org>/<project>/<role>/`: `role.md` (context, rules, instructions), `overlay.yml` (tool approvals and MCP isolation for omp; shell commands run without asking except those in `core/workflow/destructive-commands.yml` and the org's `destructive-commands.yml`; your own omp settings, such as a global bash prompt, still apply), `agent.yml` (launch command and model) |
 | `./setup vault find` / `use <path>` / `new <path>` | Uses an existing notes vault, or creates one with the default structure |
 | `./setup delegation on` / `off` / `show` | Lets Main hand work to project agents (adds the delegation extension to every agent launch); `show` lists the checks |
 | `./setup routing show` / `set <role> <provider/model>…` / `limits <short%> <week%>` / `off` | Shows your providers' usage; sets the models per omp model role for usage-based routing (regenerates the agents) |
@@ -135,6 +135,7 @@ For team leads. Copy `core/templates/org/` into a new private repo and fill it i
 | `projects/<id>/` | `project.yml` (repos, default repo, test commands), `context.md`, `glossary.md`, optional `roles/` |
 | `roles/` | Org versions of core roles (tighten only) |
 | `mcp/allow.yml`, `mcp/block.yml` | MCP servers roles may use, and ones never offered (globs allowed) |
+| `destructive-commands.yml` (optional) | A YAML list of command patterns for your own tools (e.g. your code host's CLI) that agents must ask about before running; added to `core/workflow/destructive-commands.yml`, never replacing it |
 | `denywords.txt` | Words that must never appear in this public repo; `./setup verify` checks them |
 
 Share its URL with your team; each engineer adds it in the wizard's Organisation step (or with `./setup org add <url>`).
