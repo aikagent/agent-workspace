@@ -7,7 +7,7 @@ tiers:                           # role model tier → omp model role, unless wo
   task: "@task"
   review: "@slow"
 generated:                       # what ./setup role add writes for omp
-  overlay.yml: tools.approval — deny for denied tools (and edit, write, ast_edit for read-only roles), prompt for prompted tools; tools.xdev false for read-only roles; mcp.enableProjectConfig false (the repo's own MCP config is never loaded); with routing on, retry (usage-aware fallback with reserve 100 − short, fallbackChains = routing roles; other global chains kept)
+  overlay.yml: tools.approval — deny for denied tools (and edit, write, ast_edit for read-only roles), prompt for prompted tools; bash.patterns — prompt for each command in core/workflow/destructive-commands.yml plus the org's destructive-commands.yml, every other shell command runs freely; tools.xdev false for read-only roles; mcp.enableProjectConfig false (the repo's own MCP config is never loaded); with routing on, retry (usage-aware fallback with reserve 100 − short, fallbackChains = routing roles; other global chains kept)
   routing.json: workspace.yml routing, read by usage-router/index.ts for subagent spawns
   role.md: project context, must-not rules, read-only paths, allowed MCP servers, role instructions (instruction only)
 draft.yml: "settings overlay for the wizard's drafting call: read-only (no shell, writes, memory or skills), run with --approval-mode always-ask so MCP calls are refused too"

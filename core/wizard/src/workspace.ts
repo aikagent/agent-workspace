@@ -221,7 +221,8 @@ export function roleAdd(root: string, core: string, ref: string, roleId: string)
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "role.md"), renderRoleMd(context, role));
 
-  const approval: Record<string, string> = {};
+  // eval can start shells the destructive-command patterns never see, so it asks unless a role denies it.
+  const approval: Record<string, string> = { eval: "prompt" };
   for (const tool of role.tools.prompt) approval[tool] = "prompt";
   for (const tool of [...role.tools.deny, ...(role.writes ? [] : FILE_WRITERS)]) approval[tool] = "deny";
   // Read-only roles deny `write`; omp routes MCP calls through `write xd://…` unless tools.xdev is off.
@@ -237,8 +238,17 @@ export function roleAdd(root: string, core: string, ref: string, roleId: string)
     usageReservePct: 100 - routing.short,
     fallbackChains: routing.roles,
   };
+  // Every agent runs commands freely except these, which wait for the engineer: core/workflow/destructive-commands.yml
+  // plus the org's own destructive-commands.yml (its tools, e.g. a code host CLI), which can only add to the list.
+  const orgList = join(orgDir, "destructive-commands.yml");
+  const orgDestructive = existsSync(orgList) ? yaml(orgList) : null;
+  // An empty or comment-only file is fine; anything else that is not a list of strings would drop the org's rules unseen.
+  if (orgDestructive != null && !(Array.isArray(orgDestructive) && orgDestructive.every((p) => typeof p === "string")))
+    throw new Error(`${orgList}: must be a list of command patterns (strings)`);
+  const destructive = [...new Set([...(yaml(join(core, "workflow", "destructive-commands.yml")) as string[]), ...((orgDestructive as string[] | null) ?? [])])];
   writeYaml(join(dir, "overlay.yml"), {
     tools: { approval, ...(role.writes ? {} : { xdev: false }) },
+    bash: { patterns: destructive.map((match) => ({ match, approval: "prompt" })) },
     mcp: { enableProjectConfig: false },
     ...(retry ? { retry } : {}),
   });

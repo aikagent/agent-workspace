@@ -45,7 +45,7 @@ test("an ask handoff forbids edits", () => {
 
 test("a read-only role changes no files and runs only named commands", () => {
   const text = buildHandoff({ ...base, writes: false, role: "ops", agentKey: "acme/shop/ops" });
-  expect(text).toContain("you change no files yourself; run only the commands this task names, each behind the approval prompt");
+  expect(text).toContain("you change no files yourself; run only the commands this task names; destructive ones and scripts that change data or running services wait for the engineer's approval");
   expect(text).not.toContain("edit only inside the target checkout");
 });
 
